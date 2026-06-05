@@ -10,6 +10,7 @@ const libraryItemFilters = require('../utils/queries/libraryItemFilters')
 const seriesFilters = require('../utils/queries/seriesFilters')
 const fileUtils = require('../utils/fileUtils')
 const { validateReorganizeSettings } = require('../utils/reorganizeTemplate')
+const { validateImportFolderSettings } = require('../utils/importFolderValidation')
 const { createNewSortInstance } = require('../libs/fastSort')
 const naturalSort = createNewSortInstance({
   comparer: new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare
@@ -117,6 +118,12 @@ class LibraryController {
               return res.status(400).send(`Invalid request. Setting "reorganize" ${result.error}`)
             }
             newLibraryPayload.settings[key] = req.body.settings[key] === null ? null : { ...req.body.settings[key] }
+          } else if (key === 'importFolder') {
+            const v = req.body.settings[key]
+            if (v !== null && typeof v !== 'string') {
+              return res.status(400).send('Invalid request. Setting "importFolder" must be a string or null')
+            }
+            newLibraryPayload.settings[key] = v
           } else {
             if (typeof req.body.settings[key] !== typeof newLibraryPayload.settings[key]) {
               return res.status(400).send(`Invalid request. Setting "${key}" must be of type ${typeof newLibraryPayload.settings[key]}`)
@@ -152,6 +159,28 @@ class LibraryController {
       }
     }
 
+    // Cross-library import-folder semantic check (now that folder paths are normalized)
+    if (newLibraryPayload.settings.importFolder !== null || newLibraryPayload.settings.importFolderEnabled) {
+      const otherLibraries = await Database.libraryModel.getAllWithFolders()
+      const importResult = validateImportFolderSettings(
+        {
+          currentLibraryId: null,
+          importFolder: newLibraryPayload.settings.importFolder,
+          importFolderEnabled: !!newLibraryPayload.settings.importFolderEnabled,
+          audiobooksOnly: !!newLibraryPayload.settings.audiobooksOnly,
+          ownFolderPaths: newLibraryPayload.libraryFolders.map((f) => f.path)
+        },
+        otherLibraries.map((lib) => ({
+          id: lib.id,
+          folderPaths: (lib.libraryFolders || []).map((f) => f.path),
+          importFolder: lib.settings?.importFolder || null
+        }))
+      )
+      if (!importResult.valid) {
+        return res.status(400).send(`Invalid request. ${importResult.error}`)
+      }
+    }
+
     // Set display order
     let currentLargestDisplayOrder = await Database.libraryModel.getMaxDisplayOrder()
     if (isNaN(currentLargestDisplayOrder)) currentLargestDisplayOrder = 0
@@ -179,6 +208,7 @@ class LibraryController {
 
     // Add library watcher
     Watcher.addLibrary(library)
+    require('../managers/ImportFolderManager').addLibrary(library)
 
     res.json(library.toOldJSON())
   }
@@ -373,6 +403,17 @@ class LibraryController {
             updatedSettings[key] = next
             Logger.debug(`[LibraryController] Library "${req.library.name}" updating setting "reorganize" to ${JSON.stringify(next)}`)
           }
+        } else if (key === 'importFolder') {
+          const v = req.body.settings[key]
+          if (v !== null && typeof v !== 'string') {
+            Logger.error(`[LibraryController] Invalid request. Setting "importFolder" must be a string or null`)
+            return res.status(400).send('Invalid request. Setting "importFolder" must be a string or null')
+          }
+          if (v !== updatedSettings[key]) {
+            hasUpdates = true
+            updatedSettings[key] = v
+            Logger.debug(`[LibraryController] Library "${req.library.name}" updating setting "importFolder" to "${v}"`)
+          }
         } else {
           if (typeof req.body.settings[key] !== typeof updatedSettings[key]) {
             Logger.error(`[LibraryController] Invalid request. Setting "${key}" must be of type ${typeof updatedSettings[key]}`)
@@ -390,6 +431,32 @@ class LibraryController {
       if (hasUpdates) {
         updatePayload.settings = updatedSettings
         req.library.changed('settings', true)
+      }
+    }
+
+    // Cross-library import-folder semantic check (runs against the intended final folder set, before any folder mutations)
+    if (updatedSettings.importFolder !== null || updatedSettings.importFolderEnabled) {
+      const finalFolderPaths = Array.isArray(req.body.folders)
+        ? req.body.folders.map((f) => fileUtils.filePathToPOSIX(Path.resolve(f.fullPath || f.path)))
+        : (req.library.libraryFolders || []).map((f) => f.path)
+      const otherLibraries = await Database.libraryModel.getAllWithFolders()
+      const importResult = validateImportFolderSettings(
+        {
+          currentLibraryId: req.library.id,
+          importFolder: updatedSettings.importFolder,
+          importFolderEnabled: !!updatedSettings.importFolderEnabled,
+          audiobooksOnly: !!updatedSettings.audiobooksOnly,
+          ownFolderPaths: finalFolderPaths
+        },
+        otherLibraries.map((lib) => ({
+          id: lib.id,
+          folderPaths: (lib.libraryFolders || []).map((f) => f.path),
+          importFolder: lib.settings?.importFolder || null
+        }))
+      )
+      if (!importResult.valid) {
+        Logger.error(`[LibraryController] Invalid request. ${importResult.error}`)
+        return res.status(400).send(`Invalid request. ${importResult.error}`)
       }
     }
 
@@ -522,6 +589,11 @@ class LibraryController {
       hasUpdates = true
     }
 
+    // Re-evaluate import-folder watcher on any settings change (cheap; idempotent)
+    if (hasUpdates) {
+      require('../managers/ImportFolderManager').updateLibrary(req.library)
+    }
+
     if (hasUpdates) {
       // Only emit to users with access to library
       const userFilter = (user) => {
@@ -549,6 +621,7 @@ class LibraryController {
 
     // Remove library watcher
     Watcher.removeLibrary(req.library)
+    require('../managers/ImportFolderManager').removeLibrary(req.library.id)
 
     // Remove collections for library
     const numCollectionsRemoved = await Database.collectionModel.removeAllForLibrary(req.library.id)

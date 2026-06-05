@@ -56,6 +56,7 @@ export default {
         else if (pageName === 'api-keys') return this.$strings.HeaderApiKeys
         else if (pageName === 'item-metadata-utils') return this.$strings.HeaderItemMetadataUtils
         else if (pageName === 'reorganize') return this.$strings.HeaderReorganize
+        else if (pageName === 'imports') return this.$strings.HeaderImports
         else if (pageName === 'rss-feeds') return this.$strings.HeaderRSSFeeds
         else if (pageName === 'email') return this.$strings.HeaderEmail
         else if (pageName === 'authentication') return this.$strings.HeaderAuthentication
