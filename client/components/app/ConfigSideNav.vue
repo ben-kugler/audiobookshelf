@@ -111,6 +111,11 @@ export default {
           path: '/config/reorganize'
         },
         {
+          id: 'config-imports',
+          title: this.$strings.HeaderImports,
+          path: '/config/imports'
+        },
+        {
           id: 'config-rss-feeds',
           title: this.$strings.HeaderRSSFeeds,
           path: '/config/rss-feeds'

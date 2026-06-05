@@ -37,6 +37,7 @@ const ShareController = require('../controllers/ShareController')
 const StatsController = require('../controllers/StatsController')
 const ApiKeyController = require('../controllers/ApiKeyController')
 const ReorganizeController = require('../controllers/ReorganizeController')
+const ImportController = require('../controllers/ImportController')
 
 class ApiRouter {
   constructor(Server) {
@@ -103,6 +104,14 @@ class ApiRouter {
     this.router.post('/libraries/:id/reorganize/apply', LibraryController.middleware.bind(this), ReorganizeController.apply.bind(ReorganizeController))
     this.router.post('/libraries/:id/reorganize/cleanup/scan', LibraryController.middleware.bind(this), ReorganizeController.cleanupScan.bind(ReorganizeController))
     this.router.post('/libraries/:id/reorganize/cleanup/apply', LibraryController.middleware.bind(this), ReorganizeController.cleanupApply.bind(ReorganizeController))
+
+    this.router.get('/imports', ImportController.list.bind(ImportController))
+    this.router.get('/imports/candidates', ImportController.candidates.bind(ImportController))
+    this.router.get('/imports/:id', ImportController.findOne.bind(ImportController))
+    this.router.patch('/imports/:id', ImportController.patch.bind(ImportController))
+    this.router.post('/imports/:id/approve', ImportController.approve.bind(ImportController))
+    this.router.post('/imports/:id/reject', ImportController.reject.bind(ImportController))
+    this.router.delete('/imports/:id', ImportController.delete.bind(ImportController))
 
     //
     // Item Routes

@@ -4,7 +4,7 @@ const Logger = require('../Logger')
 const Database = require('../Database')
 const Watcher = require('../Watcher')
 const TaskManager = require('../managers/TaskManager')
-const { filePathToPOSIX, getFileTimestampsWithIno } = require('./fileUtils')
+const { getFileTimestampsWithIno } = require('./fileUtils')
 const { buildReorganizePlan } = require('./reorganizePlanner')
 
 const inFlightLibraries = new Set()
@@ -40,7 +40,9 @@ async function tryRollbackMove(fromAbs, toAbs) {
  * @param {string} absPath
  */
 async function safeStat(absPath) {
-  return getFileTimestampsWithIno(absPath).then((s) => s || null).catch(() => null)
+  return getFileTimestampsWithIno(absPath)
+    .then((s) => s || null)
+    .catch(() => null)
 }
 
 /**
@@ -152,8 +154,16 @@ async function executeSingleMove(move) {
   const fromAbs = move.fromAbsPath
   const toAbs = move.toAbsPath
   const cleanupWatcher = () => {
-    try { Watcher.removeIgnoreDir(fromAbs) } catch (e) { /* noop */ }
-    try { Watcher.removeIgnoreDir(toAbs) } catch (e) { /* noop */ }
+    try {
+      Watcher.removeIgnoreDir(fromAbs)
+    } catch (e) {
+      /* noop */
+    }
+    try {
+      Watcher.removeIgnoreDir(toAbs)
+    } catch (e) {
+      /* noop */
+    }
   }
 
   Watcher.addIgnoreDir(fromAbs)
@@ -202,7 +212,11 @@ async function executeSingleMove(move) {
     await libraryItem.save({ transaction: t })
     await t.commit()
   } catch (err) {
-    try { await t.rollback() } catch (e) { /* noop */ }
+    try {
+      await t.rollback()
+    } catch (e) {
+      /* noop */
+    }
     const rolledBack = await tryRollbackMove(fromAbs, toAbs)
     cleanupWatcher()
     return {

@@ -19,6 +19,7 @@ const Logger = require('./Logger')
 
 const Auth = require('./Auth')
 const Watcher = require('./Watcher')
+const ImportFolderManager = require('./managers/ImportFolderManager')
 const Database = require('./Database')
 const SocketAuthority = require('./SocketAuthority')
 
@@ -218,6 +219,8 @@ class Server {
         LibraryScanner.scanFilesChanged(pendingFileUpdates, pendingTask)
       })
     }
+
+    ImportFolderManager.init(libraries)
   }
 
   /**
@@ -554,6 +557,8 @@ class Server {
     Logger.info('=== Stopping Server ===')
     Watcher.close()
     Logger.info('[Server] Watcher Closed')
+    ImportFolderManager.closeAll()
+    Logger.info('[Server] Import Folder Watchers Closed')
     await SocketAuthority.close()
     Logger.info('[Server] Closing HTTP Server')
     await new Promise((resolve) => this.server.close(resolve))

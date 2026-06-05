@@ -1,6 +1,6 @@
 <template>
   <div class="w-full h-full md:px-4 py-2 mb-4">
-    <div v-if="!showDirectoryPicker" class="w-full h-full md:py-4">
+    <div v-if="!pickingFor" class="w-full h-full md:py-4">
       <div class="flex flex-wrap md:flex-nowrap -mx-1 mb-2">
         <div class="w-2/5 md:w-72 px-1 py-1 md:py-0">
           <ui-dropdown v-model="mediaType" :items="mediaTypes" :label="$strings.LabelMediaType" :disabled="!isNew" small @input="changedMediaType" />
@@ -30,8 +30,23 @@
 
         <ui-btn class="w-full mt-2" color="bg-primary" @click="browseForFolder">{{ $strings.ButtonBrowseForFolder }}</ui-btn>
       </div>
+
+      <div v-if="mediaType === 'book'" class="w-full mt-4 pt-3 border-t border-white/10">
+        <p class="px-1 text-sm font-semibold">Import folder</p>
+        <p class="px-1 text-xs text-gray-400 mb-2">Ebooks dropped into this folder will be queued for admin review and can be matched to existing audiobooks. Requires Audiobooks Only mode. Must be outside every library folder.</p>
+        <div class="flex items-center py-1 px-2">
+          <ui-toggle-switch v-model="importFolderEnabled" size="sm" @input="formUpdated" />
+          <p class="pl-3 text-sm">Watch import folder</p>
+        </div>
+        <div class="w-full flex items-center py-1 px-2">
+          <span class="material-symbols fill mr-2 text-warning" style="font-size: 1.2rem">drive_folder_upload</span>
+          <ui-editable-text ref="importFolderInput" v-model="importFolder" type="text" placeholder="/absolute/path/to/import" class="w-full" @blur="formUpdated" />
+          <span v-show="importFolder" class="material-symbols text-2xl ml-2 cursor-pointer hover:text-error" @click="clearImportFolder">close</span>
+        </div>
+        <ui-btn class="w-full mt-2" color="bg-primary" @click="browseForImportFolder">{{ $strings.ButtonBrowseForFolder }}</ui-btn>
+      </div>
     </div>
-    <modals-libraries-lazy-folder-chooser v-else :paths="folderPaths" @back="showDirectoryPicker = false" @select="selectFolder" />
+    <modals-libraries-lazy-folder-chooser v-else :paths="pickerExcludePaths" @back="cancelPicker" @select="selectFolder" />
   </div>
 </template>
 
@@ -51,9 +66,11 @@ export default {
       provider: 'google',
       icon: '',
       folders: [],
-      showDirectoryPicker: false,
+      pickingFor: null,
       newFolderPath: '',
-      mediaType: null
+      mediaType: null,
+      importFolder: '',
+      importFolderEnabled: false
     }
   },
   computed: {
@@ -71,6 +88,11 @@ export default {
     },
     folderPaths() {
       return this.folders.map((f) => f.fullPath)
+    },
+    pickerExcludePaths() {
+      const merged = [...this.folderPaths]
+      if (this.importFolder) merged.push(this.importFolder)
+      return merged.filter(Boolean)
     },
     providers() {
       if (this.mediaType === 'podcast') return this.$store.state.scanners.podcastProviders
@@ -92,16 +114,34 @@ export default {
       }
     },
     browseForFolder() {
-      this.showDirectoryPicker = true
+      this.pickingFor = 'library'
+    },
+    browseForImportFolder() {
+      this.pickingFor = 'import'
+    },
+    cancelPicker() {
+      this.pickingFor = null
+    },
+    clearImportFolder() {
+      this.importFolder = ''
+      this.formUpdated()
     },
     getLibraryData() {
-      return {
+      const data = {
         name: this.name,
         provider: this.provider,
         folders: this.folders,
         icon: this.icon,
         mediaType: this.mediaType
       }
+      // Only book libraries support import-folder watching
+      if (this.mediaType === 'book') {
+        data.settings = {
+          importFolder: this.importFolder?.trim() ? this.importFolder.trim() : null,
+          importFolderEnabled: !!this.importFolderEnabled
+        }
+      }
+      return data
     },
     formUpdated() {
       this.$emit('update', this.getLibraryData())
@@ -131,8 +171,12 @@ export default {
       this.formUpdated()
     },
     selectFolder(fullPath) {
-      this.folders.push({ fullPath })
-      this.showDirectoryPicker = false
+      if (this.pickingFor === 'import') {
+        this.importFolder = fullPath
+      } else {
+        this.folders.push({ fullPath })
+      }
+      this.pickingFor = null
       this.formUpdated()
     },
     removeFolder(folder) {
@@ -140,8 +184,8 @@ export default {
       this.formUpdated()
     },
     backArrowPress() {
-      if (this.showDirectoryPicker) {
-        this.showDirectoryPicker = false
+      if (this.pickingFor) {
+        this.pickingFor = null
       }
     },
     init() {
@@ -150,8 +194,10 @@ export default {
       this.folders = this.library ? this.library.folders.map((p) => ({ ...p })) : []
       this.icon = this.library ? this.library.icon : 'default'
       this.mediaType = this.library ? this.library.mediaType : 'book'
+      this.importFolder = this.library?.settings?.importFolder || ''
+      this.importFolderEnabled = !!this.library?.settings?.importFolderEnabled
 
-      this.showDirectoryPicker = false
+      this.pickingFor = null
     }
   },
   mounted() {

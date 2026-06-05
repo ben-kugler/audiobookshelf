@@ -1,102 +1,101 @@
 <template>
   <div>
-    <div class="bg-bg rounded-md shadow-lg border border-white/5 p-4 mb-4">
-      <div class="flex items-center mb-4">
-        <h1 class="text-xl">Reorganize Files</h1>
-      </div>
-      <p class="text-sm text-gray-300 mb-3">
-        Build path templates from book metadata, scan for misplaced books, then move them into a consistent folder structure. Listening progress and metadata are preserved.
-      </p>
+    <app-settings-content header-text="Reorganize Files" description="Build path templates from book metadata, scan for misplaced books, then move them into a consistent folder structure. Listening progress and metadata are preserved.">
+      <template #header-items>
+        <div class="grow" />
+        <ui-dropdown v-if="bookLibraries.length > 1" v-model="selectedLibraryId" :items="libraryItems" small class="w-60" />
+      </template>
 
-      <!-- Library selector -->
-      <div v-if="bookLibraries.length > 1" class="mb-4">
-        <label class="text-sm text-gray-300 block mb-1">Library</label>
-        <select v-model="selectedLibraryId" class="bg-primary text-white py-2 px-3 rounded border border-black/20 w-full max-w-sm">
-          <option v-for="lib in bookLibraries" :key="lib.id" :value="lib.id">{{ lib.name }}</option>
-        </select>
-      </div>
-      <div v-else-if="!bookLibraries.length" class="bg-error/20 border border-error/40 rounded p-3 text-sm">
-        Reorganize requires at least one book library.
-      </div>
-    </div>
+      <div v-if="!bookLibraries.length" class="text-warning text-sm">Reorganize requires at least one book library.</div>
+    </app-settings-content>
 
-    <!-- Templates editor -->
-    <div v-if="library" class="bg-bg rounded-md shadow-lg border border-white/5 p-4 mb-4">
-      <h2 class="text-lg mb-2">Templates</h2>
-
-      <div class="mb-3">
-        <label class="text-sm text-gray-300 block mb-1">Folder template</label>
-        <input v-model="folderTemplate" type="text" class="bg-primary text-white py-2 px-3 rounded border border-black/20 w-full font-mono text-sm" placeholder="{author}/{series}/{title}" />
-      </div>
-      <div class="mb-3">
-        <label class="text-sm text-gray-300 block mb-1">File template</label>
-        <input v-model="fileTemplate" type="text" class="bg-primary text-white py-2 px-3 rounded border border-black/20 w-full max-w-md font-mono text-sm" placeholder="{title}" />
-      </div>
-
-      <div class="mb-3">
-        <label class="text-sm text-gray-300 block mb-1">Sample book for preview</label>
-        <select v-model="previewBookId" class="bg-primary text-white py-2 px-3 rounded border border-black/20 w-full max-w-md text-sm" :disabled="loadingSampleBooks">
-          <option :value="null">— Use canned sample —</option>
-          <option v-for="b in sampleBooks" :key="b.id" :value="b.id">{{ b.title }}</option>
-        </select>
-        <p v-if="loadingSampleBooks" class="text-xs text-gray-400 mt-1">Loading sample books…</p>
-      </div>
-
-      <div class="bg-primary/40 rounded p-3 font-mono text-xs">
-        <div v-if="previewError" class="text-error">{{ previewError }}</div>
-        <div v-else-if="previewResult">
-          <div class="text-gray-400">Preview path:</div>
-          <div class="text-white break-all">{{ previewResult.fullPath || '(empty)' }}</div>
-          <div v-if="previewResult.blocked" class="text-warning mt-1">⚠ {{ previewBlockedReason }}</div>
+    <!-- Templates -->
+    <app-settings-content v-if="library" header-text="Templates" description="Click a placeholder below to add it. Click a chip in your template to remove it. Missing series or seriesSequence collapse cleanly.">
+      <form @submit.prevent="saveTemplates">
+        <!-- Folder template -->
+        <p class="px-1 text-sm font-semibold mb-1">Folder template</p>
+        <div class="bg-primary/40 rounded p-3 min-h-14 flex items-center gap-1 flex-wrap mb-2">
+          <template v-if="folderTokens.length">
+            <template v-for="(tok, i) in folderTokens">
+              <span v-if="i > 0" :key="`fsep-${i}`" class="text-gray-400 font-mono select-none">/</span>
+              <button :key="`ftok-${i}`" type="button" class="bg-success/20 hover:bg-error/40 text-success hover:text-error px-2 py-1 rounded text-xs font-mono inline-flex items-center gap-1 transition-colors" @click="removeFolderToken(i)">
+                {{ tok }}
+                <span class="material-symbols text-sm leading-none">close</span>
+              </button>
+            </template>
+          </template>
+          <span v-else class="text-gray-500 text-xs italic">Click a placeholder below to start building…</span>
         </div>
-        <div v-else class="text-gray-400">…</div>
-      </div>
+        <div class="flex gap-1 flex-wrap mb-4">
+          <button v-for="ph in availablePlaceholders" :key="`fadd-${ph}`" type="button" class="bg-primary border border-white/10 hover:border-success hover:bg-primary/60 px-2 py-1 rounded text-xs font-mono" :disabled="folderTokens.includes(`{${ph}}`)" :class="{ 'opacity-40 cursor-not-allowed hover:border-white/10 hover:bg-primary': folderTokens.includes(`{${ph}}`) }" @click="addFolderToken(ph)">{{ '{' + ph + '}' }}</button>
+        </div>
 
-      <p class="text-xs text-gray-400 mt-2">
-        Placeholders: <span class="font-mono">{author} {series} {seriesSequence} {title} {narrator} {publishedYear} {subtitle} {language} {isbn} {asin}</span><br />
-        Missing <span class="font-mono">{series}</span> or <span class="font-mono">{seriesSequence}</span> values collapse cleanly. Other placeholders are required if used.
-      </p>
+        <!-- File template -->
+        <p class="px-1 text-sm font-semibold mb-1">File template</p>
+        <div class="bg-primary/40 rounded p-3 min-h-14 flex items-center gap-1 flex-wrap mb-2">
+          <template v-if="fileTokens.length">
+            <template v-for="(tok, i) in fileTokens">
+              <span v-if="i > 0" :key="`flsep-${i}`" class="text-gray-400 font-mono select-none">·</span>
+              <button :key="`fltok-${i}`" type="button" class="bg-success/20 hover:bg-error/40 text-success hover:text-error px-2 py-1 rounded text-xs font-mono inline-flex items-center gap-1 transition-colors" @click="removeFileToken(i)">
+                {{ tok }}
+                <span class="material-symbols text-sm leading-none">close</span>
+              </button>
+            </template>
+          </template>
+          <span v-else class="text-gray-500 text-xs italic">Click a placeholder below to start building…</span>
+        </div>
+        <div class="flex gap-1 flex-wrap mb-4">
+          <button v-for="ph in availablePlaceholders" :key="`fladd-${ph}`" type="button" class="bg-primary border border-white/10 hover:border-success hover:bg-primary/60 px-2 py-1 rounded text-xs font-mono" :disabled="fileTokens.includes(`{${ph}}`)" :class="{ 'opacity-40 cursor-not-allowed hover:border-white/10 hover:bg-primary': fileTokens.includes(`{${ph}}`) }" @click="addFileToken(ph)">{{ '{' + ph + '}' }}</button>
+        </div>
 
-      <div class="flex items-center mt-4">
-        <button class="bg-primary border border-black/20 hover:bg-primary/80 px-4 py-2 rounded text-sm" :disabled="savingTemplates || !templatesDirty" @click="saveTemplates">
-          {{ savingTemplates ? 'Saving…' : (templatesDirty ? 'Save templates' : 'Saved') }}
-        </button>
-        <span v-if="saveError" class="ml-3 text-sm text-error">{{ saveError }}</span>
-      </div>
-    </div>
+        <!-- Preview -->
+        <div class="flex flex-wrap -mx-1 mb-2">
+          <div class="w-full md:w-2/3 px-1 py-1">
+            <p class="px-1 text-sm font-semibold mb-1">Preview path</p>
+            <div class="bg-primary/40 rounded p-3 font-mono text-xs min-h-10 flex items-center">
+              <span v-if="previewError" class="text-error">{{ previewError }}</span>
+              <span v-else-if="previewResult" :class="previewResult.blocked ? 'text-warning' : 'text-success'" class="break-all">{{ previewResult.fullPath || '(empty)' }}</span>
+              <span v-else class="text-gray-400">…</span>
+            </div>
+            <p v-if="previewResult && previewResult.blocked" class="text-xs text-warning mt-1">⚠ {{ previewBlockedReason }}</p>
+          </div>
+          <div class="w-full md:w-1/3 px-1 py-1">
+            <ui-dropdown v-model="previewBookId" :items="sampleBookItems" label="Sample book" small :disabled="loadingSampleBooks" />
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end pt-2">
+          <ui-btn type="submit" :loading="savingTemplates" :disabled="!templatesDirty">{{ templatesDirty ? 'Save templates' : 'Saved' }}</ui-btn>
+        </div>
+        <p v-if="saveError" class="text-sm text-error mt-2">{{ saveError }}</p>
+      </form>
+    </app-settings-content>
 
     <!-- Scan -->
-    <div v-if="library" class="bg-bg rounded-md shadow-lg border border-white/5 p-4 mb-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg">Scan</h2>
-        <button class="bg-warning text-bg hover:bg-warning/80 px-4 py-2 rounded text-sm font-medium" :disabled="isScanning || isApplying || templatesDirty" @click="startScan">
-          {{ isScanning ? 'Scanning…' : 'Scan for misplaced books' }}
-        </button>
-      </div>
-      <p v-if="templatesDirty" class="text-xs text-warning mt-2">Save your templates before scanning.</p>
+    <app-settings-content v-if="library" header-text="Scan" description="Scan the library for books whose paths don't match the templates.">
+      <template #header-items>
+        <div class="grow" />
+        <ui-btn color="bg-warning" class="text-bg" small :loading="isScanning" :disabled="isApplying || templatesDirty" @click="startScan">Scan for misplaced books</ui-btn>
+      </template>
+      <p v-if="templatesDirty" class="text-xs text-warning">Save your templates before scanning.</p>
       <p v-if="scanError" class="text-sm text-error mt-2">{{ scanError }}</p>
-    </div>
+    </app-settings-content>
 
     <!-- Results -->
-    <div v-if="plan" class="bg-bg rounded-md shadow-lg border border-white/5 p-4 mb-4">
-      <h2 class="text-lg mb-2">Results</h2>
-      <div class="text-sm text-gray-300 mb-3">
+    <app-settings-content v-if="plan" header-text="Results">
+      <p class="text-sm text-gray-300 mb-3">
         <span class="text-success">{{ plan.summary.willMove }}</span> to move ·
         <span>{{ plan.summary.alreadyCorrect }}</span> already correct ·
         <span class="text-warning">{{ plan.summary.blocked }}</span> blocked ·
         <span class="text-error">{{ plan.summary.conflicts }}</span> conflicts
-      </div>
+      </p>
 
-      <div v-if="!plan.moves.length" class="bg-primary/40 rounded p-3 text-sm text-gray-300">
-        Nothing to move — everything matches the templates.
-      </div>
+      <div v-if="!plan.moves.length" class="text-gray-300 text-sm py-2">Nothing to move — everything matches the templates.</div>
 
       <div v-else>
         <div class="flex items-center mb-2">
-          <label class="text-sm flex items-center cursor-pointer">
-            <input type="checkbox" :checked="allSelected" :indeterminate.prop="someSelected && !allSelected" @change="toggleAll" />
-            <span class="ml-2">Select all ({{ selectedMoveIds.size }} / {{ plan.moves.length }})</span>
-          </label>
+          <ui-checkbox :value="allSelected" :partial="someSelected && !allSelected" check-color="success" @input="toggleAll" />
+          <span class="ml-2 text-sm text-gray-300">Select all ({{ selectedMoveIds.size }} / {{ plan.moves.length }})</span>
         </div>
 
         <div class="overflow-x-auto border border-white/10 rounded">
@@ -112,7 +111,7 @@
             <tbody>
               <tr v-for="m in plan.moves" :key="m.itemId" class="border-t border-white/5 hover:bg-primary/10">
                 <td class="p-2 align-top">
-                  <input type="checkbox" :checked="selectedMoveIds.has(m.itemId)" @change="toggleMove(m.itemId)" />
+                  <ui-checkbox :value="selectedMoveIds.has(m.itemId)" check-color="success" @input="toggleMove(m.itemId)" />
                 </td>
                 <td class="p-2 align-top break-words">{{ m.title }}</td>
                 <td class="p-2 align-top font-mono break-all text-gray-300">{{ m.fromRelPath }}</td>
@@ -123,9 +122,8 @@
         </div>
       </div>
 
-      <!-- Blocked -->
       <div v-if="plan.blocked.length" class="mt-4">
-        <button class="flex items-center text-sm text-warning" @click="showBlocked = !showBlocked">
+        <button type="button" class="flex items-center text-sm text-warning" @click="showBlocked = !showBlocked">
           <span class="material-symbols">{{ showBlocked ? 'expand_more' : 'chevron_right' }}</span>
           Blocked ({{ plan.blocked.length }})
         </button>
@@ -133,18 +131,14 @@
           <table class="w-full text-xs">
             <thead class="bg-primary/40 text-left"><tr><th class="p-2">Book</th><th class="p-2">Reason</th></tr></thead>
             <tbody>
-              <tr v-for="b in plan.blocked" :key="b.itemId" class="border-t border-white/5">
-                <td class="p-2">{{ b.title }}</td>
-                <td class="p-2 font-mono">{{ formatBlocked(b) }}</td>
-              </tr>
+              <tr v-for="b in plan.blocked" :key="b.itemId" class="border-t border-white/5"><td class="p-2">{{ b.title }}</td><td class="p-2 font-mono">{{ formatBlocked(b) }}</td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
-      <!-- Conflicts -->
       <div v-if="plan.conflicts.length" class="mt-3">
-        <button class="flex items-center text-sm text-error" @click="showConflicts = !showConflicts">
+        <button type="button" class="flex items-center text-sm text-error" @click="showConflicts = !showConflicts">
           <span class="material-symbols">{{ showConflicts ? 'expand_more' : 'chevron_right' }}</span>
           Conflicts ({{ plan.conflicts.length }})
         </button>
@@ -162,24 +156,21 @@
         </div>
       </div>
 
-      <!-- Apply -->
-      <div class="mt-4 flex items-center">
-        <button class="bg-success text-bg hover:bg-success/80 px-4 py-2 rounded text-sm font-medium" :disabled="!canApply" @click="startApply">
-          {{ isApplying ? `Applying… ${applyProgressLabel}` : `Apply ${selectedMoveIds.size} selected` }}
-        </button>
-        <span v-if="applyError" class="ml-3 text-sm text-error">{{ applyError }}</span>
+      <div class="flex items-center justify-end pt-4">
+        <span v-if="isApplying" class="mr-3 text-sm text-gray-300">{{ applyProgressLabel }}</span>
+        <ui-btn color="bg-success" class="text-bg" :loading="isApplying" :disabled="!canApply" @click="startApply">Apply {{ selectedMoveIds.size }} selected</ui-btn>
       </div>
-    </div>
+      <p v-if="applyError" class="text-sm text-error mt-2">{{ applyError }}</p>
+    </app-settings-content>
 
-    <!-- Apply result -->
-    <div v-if="applyResult" class="bg-bg rounded-md shadow-lg border border-white/5 p-4 mb-4">
-      <h2 class="text-lg mb-2">Apply Result</h2>
-      <div class="text-sm text-gray-300 mb-3">
+    <!-- Apply Result -->
+    <app-settings-content v-if="applyResult" header-text="Apply Result">
+      <p class="text-sm text-gray-300 mb-3">
         <span class="text-success">{{ applyResult.succeeded.length }}</span> succeeded ·
         <span class="text-error">{{ applyResult.failed.length }}</span> failed ·
         <span class="text-warning">{{ applyResult.stale.length }}</span> stale
-      </div>
-      <details v-if="applyResult.failed.length" open class="mb-2">
+      </p>
+      <details v-if="applyResult.failed.length" open class="mb-3">
         <summary class="cursor-pointer text-sm text-error">Failed ({{ applyResult.failed.length }})</summary>
         <table class="w-full text-xs mt-2">
           <thead class="bg-primary/40 text-left"><tr><th class="p-2">Book id</th><th class="p-2">Target</th><th class="p-2">Reason</th></tr></thead>
@@ -194,7 +185,7 @@
       </details>
       <details v-if="applyResult.stale.length" open>
         <summary class="cursor-pointer text-sm text-warning">Stale ({{ applyResult.stale.length }})</summary>
-        <p class="text-xs text-gray-400 mt-1">These items' computed destinations changed between scanning and applying (likely because metadata was edited). Re-scan to refresh.</p>
+        <p class="text-xs text-gray-400 mt-1">These items' destinations changed between scanning and applying (likely metadata edits). Re-scan to refresh.</p>
         <table class="w-full text-xs mt-2">
           <thead class="bg-primary/40 text-left"><tr><th class="p-2">Book id</th><th class="p-2">Requested</th><th class="p-2">Now</th></tr></thead>
           <tbody>
@@ -206,49 +197,38 @@
           </tbody>
         </table>
       </details>
-    </div>
+    </app-settings-content>
 
-    <!-- Empty-folder cleanup -->
-    <div v-if="library" class="bg-bg rounded-md shadow-lg border border-white/5 p-4 mb-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-lg">Clean up empty folders</h2>
-        <button class="bg-warning text-bg hover:bg-warning/80 px-4 py-2 rounded text-sm font-medium" :disabled="isCleanupScanning || isCleanupApplying || isScanning || isApplying" @click="startCleanupScan">
-          {{ isCleanupScanning ? 'Scanning…' : 'Scan for empty folders' }}
-        </button>
-      </div>
-      <p class="text-xs text-gray-400 mt-1">Removes empty directories, cascading up to (but never including) library roots. OS metadata (<span class="font-mono">.DS_Store</span>, <span class="font-mono">Thumbs.db</span>, <span class="font-mono">desktop.ini</span>, <span class="font-mono">._*</span>) inside otherwise-empty folders is removed alongside.</p>
-      <p v-if="cleanupScanError" class="text-sm text-error mt-2">{{ cleanupScanError }}</p>
+    <!-- Cleanup -->
+    <app-settings-content v-if="library" header-text="Clean up empty folders" description="Remove empty directories, cascading up to (but never including) library roots. OS metadata (.DS_Store, Thumbs.db, desktop.ini, ._*) inside otherwise-empty folders is removed alongside.">
+      <template #header-items>
+        <div class="grow" />
+        <ui-btn color="bg-warning" class="text-bg" small :loading="isCleanupScanning" :disabled="isCleanupApplying || isScanning || isApplying" @click="startCleanupScan">Scan for empty folders</ui-btn>
+      </template>
 
-      <div v-if="cleanupPlan" class="mt-3">
-        <div class="text-sm text-gray-300 mb-2">
+      <p v-if="cleanupScanError" class="text-sm text-error">{{ cleanupScanError }}</p>
+
+      <div v-if="cleanupPlan" class="mt-2">
+        <p class="text-sm text-gray-300 mb-2">
           <span class="text-warning">{{ cleanupPlan.summary.total }}</span> empty folders found
-        </div>
+        </p>
 
-        <div v-if="!cleanupPlan.folders.length" class="bg-primary/40 rounded p-3 text-sm text-gray-300">
-          Nothing to clean up.
-        </div>
+        <div v-if="!cleanupPlan.folders.length" class="text-gray-300 text-sm py-2">Nothing to clean up.</div>
 
         <div v-else>
           <div class="flex items-center mb-2">
-            <label class="text-sm flex items-center cursor-pointer">
-              <input type="checkbox" :checked="allCleanupSelected" :indeterminate.prop="someCleanupSelected && !allCleanupSelected" @change="toggleAllCleanup" />
-              <span class="ml-2">Select all ({{ selectedCleanupPaths.size }} / {{ cleanupPlan.folders.length }})</span>
-            </label>
+            <ui-checkbox :value="allCleanupSelected" :partial="someCleanupSelected && !allCleanupSelected" check-color="success" @input="toggleAllCleanup" />
+            <span class="ml-2 text-sm text-gray-300">Select all ({{ selectedCleanupPaths.size }} / {{ cleanupPlan.folders.length }})</span>
           </div>
-
           <div class="overflow-x-auto border border-white/10 rounded">
             <table class="w-full text-xs">
               <thead class="bg-primary/40 text-left">
-                <tr>
-                  <th class="p-2 w-8"></th>
-                  <th class="p-2">Folder</th>
-                  <th class="p-2">Reason</th>
-                </tr>
+                <tr><th class="p-2 w-8"></th><th class="p-2">Folder</th><th class="p-2">Reason</th></tr>
               </thead>
               <tbody>
                 <tr v-for="f in cleanupPlan.folders" :key="f.absPath" class="border-t border-white/5 hover:bg-primary/10">
                   <td class="p-2 align-top">
-                    <input type="checkbox" :checked="selectedCleanupPaths.has(f.absPath)" @change="toggleCleanupPath(f.absPath)" />
+                    <ui-checkbox :value="selectedCleanupPaths.has(f.absPath)" check-color="success" @input="toggleCleanupPath(f.absPath)" />
                   </td>
                   <td class="p-2 align-top font-mono break-all">{{ f.relPath }}</td>
                   <td class="p-2 align-top">{{ formatCleanupReason(f.reason) }}</td>
@@ -257,21 +237,20 @@
             </table>
           </div>
 
-          <div class="mt-3 flex items-center">
-            <button class="bg-error text-white hover:bg-error/80 px-4 py-2 rounded text-sm font-medium" :disabled="!canCleanupApply" @click="startCleanupApply">
-              {{ isCleanupApplying ? `Removing… ${cleanupProgressLabel}` : `Delete ${selectedCleanupPaths.size} selected` }}
-            </button>
-            <span v-if="cleanupApplyError" class="ml-3 text-sm text-error">{{ cleanupApplyError }}</span>
+          <div class="flex items-center justify-end pt-3">
+            <span v-if="isCleanupApplying" class="mr-3 text-sm text-gray-300">{{ cleanupProgressLabel }}</span>
+            <ui-btn color="bg-error" :loading="isCleanupApplying" :disabled="!canCleanupApply" @click="startCleanupApply">Delete {{ selectedCleanupPaths.size }} selected</ui-btn>
           </div>
+          <p v-if="cleanupApplyError" class="text-sm text-error mt-2">{{ cleanupApplyError }}</p>
         </div>
       </div>
 
       <div v-if="cleanupResult" class="mt-4 border-t border-white/10 pt-3">
-        <div class="text-sm text-gray-300 mb-2">
+        <p class="text-sm text-gray-300 mb-2">
           <span class="text-success">{{ cleanupResult.succeeded.length }}</span> removed ·
           <span class="text-error">{{ cleanupResult.failed.length }}</span> failed ·
           <span class="text-warning">{{ cleanupResult.skipped.length }}</span> skipped
-        </div>
+        </p>
         <details v-if="cleanupResult.failed.length" open>
           <summary class="cursor-pointer text-sm text-error">Failed ({{ cleanupResult.failed.length }})</summary>
           <ul class="mt-2 text-xs font-mono">
@@ -285,7 +264,7 @@
           </ul>
         </details>
       </div>
-    </div>
+    </app-settings-content>
   </div>
 </template>
 
@@ -302,7 +281,7 @@ export default {
       fileTemplate: '',
       savedFolderTemplate: '',
       savedFileTemplate: '',
-      previewBookId: null,
+      previewBookId: '',
       previewResult: null,
       previewError: null,
       previewDebounce: null,
@@ -340,6 +319,21 @@ export default {
       const libs = this.$store.getters['libraries/getSortedLibraries']()
       return libs.filter((l) => l.mediaType === 'book')
     },
+    libraryItems() {
+      return this.bookLibraries.map((l) => ({ value: l.id, text: l.name }))
+    },
+    sampleBookItems() {
+      return [{ value: '', text: '— Use canned sample —' }, ...this.sampleBooks.map((b) => ({ value: b.id, text: b.title }))]
+    },
+    availablePlaceholders() {
+      return ['author', 'series', 'seriesSequence', 'title', 'narrator', 'publishedYear', 'subtitle', 'language', 'isbn', 'asin']
+    },
+    folderTokens() {
+      return this.parseTokens(this.folderTemplate)
+    },
+    fileTokens() {
+      return this.parseTokens(this.fileTemplate)
+    },
     templatesDirty() {
       return this.folderTemplate !== this.savedFolderTemplate || this.fileTemplate !== this.savedFileTemplate
     },
@@ -351,12 +345,8 @@ export default {
       if (r === 'emptyFileTemplate') return 'File template resolves to nothing.'
       return r
     },
-    allSelected() {
-      return !!this.plan?.moves.length && this.selectedMoveIds.size === this.plan.moves.length
-    },
-    someSelected() {
-      return this.selectedMoveIds.size > 0
-    },
+    allSelected() { return !!this.plan?.moves.length && this.selectedMoveIds.size === this.plan.moves.length },
+    someSelected() { return this.selectedMoveIds.size > 0 },
     isScanning() {
       if (!this.scanTaskId) return false
       const t = this.findTask(this.scanTaskId)
@@ -388,12 +378,8 @@ export default {
       const t = this.findTask(this.cleanupApplyTaskId)
       return t?.description || ''
     },
-    allCleanupSelected() {
-      return !!this.cleanupPlan?.folders.length && this.selectedCleanupPaths.size === this.cleanupPlan.folders.length
-    },
-    someCleanupSelected() {
-      return this.selectedCleanupPaths.size > 0
-    },
+    allCleanupSelected() { return !!this.cleanupPlan?.folders.length && this.selectedCleanupPaths.size === this.cleanupPlan.folders.length },
+    someCleanupSelected() { return this.selectedCleanupPaths.size > 0 },
     canCleanupApply() {
       return this.cleanupPlan && this.selectedCleanupPaths.size > 0 && !this.isCleanupApplying && !this.isCleanupScanning && !this.isScanning && !this.isApplying
     }
@@ -411,9 +397,42 @@ export default {
       if (!id) return null
       return this.$store.state.tasks.tasks.find((t) => t.id === id) || null
     },
+    parseTokens(tmpl) {
+      if (!tmpl) return []
+      const matches = tmpl.match(/\{[^{}]+\}/g) || []
+      return matches.filter((m) => this.availablePlaceholders.includes(m.slice(1, -1)))
+    },
+    addFolderToken(placeholder) {
+      const token = `{${placeholder}}`
+      if (this.folderTokens.includes(token)) return
+      const tokens = [...this.folderTokens, token]
+      this.folderTemplate = tokens.join('/')
+    },
+    removeFolderToken(index) {
+      const tokens = [...this.folderTokens]
+      tokens.splice(index, 1)
+      this.folderTemplate = tokens.join('/')
+    },
+    addFileToken(placeholder) {
+      const token = `{${placeholder}}`
+      if (this.fileTokens.includes(token)) return
+      const tokens = [...this.fileTokens, token]
+      this.fileTemplate = tokens.join(' ')
+    },
+    removeFileToken(index) {
+      const tokens = [...this.fileTokens]
+      tokens.splice(index, 1)
+      this.fileTemplate = tokens.join(' ')
+    },
     formatBlocked(b) {
       if (b.reason === 'missingPlaceholder') return `missing {${b.placeholder}}`
       return b.reason
+    },
+    formatCleanupReason(r) {
+      if (r === 'empty') return 'empty'
+      if (r === 'onlyJunk') return 'only OS junk'
+      if (r === 'cascade') return 'cascade'
+      return r
     },
     async loadLibrary(libraryId) {
       this.library = null
@@ -424,7 +443,7 @@ export default {
       this.cleanupResult = null
       this.selectedCleanupPaths = new Set()
       this.sampleBooks = []
-      this.previewBookId = null
+      this.previewBookId = ''
       try {
         const lib = await this.$axios.$get(`/api/libraries/${libraryId}`)
         this.library = lib
@@ -530,12 +549,6 @@ export default {
       if (this.allSelected) this.selectedMoveIds = new Set()
       else this.selectedMoveIds = new Set(this.plan.moves.map((m) => m.itemId))
     },
-    formatCleanupReason(r) {
-      if (r === 'empty') return 'empty'
-      if (r === 'onlyJunk') return 'only OS junk'
-      if (r === 'cascade') return 'cascade'
-      return r
-    },
     toggleCleanupPath(absPath) {
       const next = new Set(this.selectedCleanupPaths)
       if (next.has(absPath)) next.delete(absPath)
@@ -580,9 +593,8 @@ export default {
       if (this.scanTaskId) {
         const t = this.findTask(this.scanTaskId)
         if (t && t.isFinished) {
-          if (t.isFailed) {
-            this.scanError = t.error || 'Scan failed'
-          } else if (t.data?.plan) {
+          if (t.isFailed) this.scanError = t.error || 'Scan failed'
+          else if (t.data?.plan) {
             this.plan = t.data.plan
             this.selectedMoveIds = new Set(this.plan.moves.map((m) => m.itemId))
           }
@@ -592,11 +604,9 @@ export default {
       if (this.applyTaskId) {
         const t = this.findTask(this.applyTaskId)
         if (t && t.isFinished) {
-          if (t.isFailed) {
-            this.applyError = t.error || 'Apply failed'
-          } else if (t.data?.result) {
+          if (t.isFailed) this.applyError = t.error || 'Apply failed'
+          else if (t.data?.result) {
             this.applyResult = t.data.result
-            // Refresh the plan since paths changed
             this.startScan()
           }
           this.applyTaskId = null
@@ -605,9 +615,8 @@ export default {
       if (this.cleanupScanTaskId) {
         const t = this.findTask(this.cleanupScanTaskId)
         if (t && t.isFinished) {
-          if (t.isFailed) {
-            this.cleanupScanError = t.error || 'Cleanup scan failed'
-          } else if (t.data?.cleanupPlan) {
+          if (t.isFailed) this.cleanupScanError = t.error || 'Cleanup scan failed'
+          else if (t.data?.cleanupPlan) {
             this.cleanupPlan = t.data.cleanupPlan
             this.selectedCleanupPaths = new Set(this.cleanupPlan.folders.map((f) => f.absPath))
           }
@@ -617,11 +626,9 @@ export default {
       if (this.cleanupApplyTaskId) {
         const t = this.findTask(this.cleanupApplyTaskId)
         if (t && t.isFinished) {
-          if (t.isFailed) {
-            this.cleanupApplyError = t.error || 'Cleanup failed'
-          } else if (t.data?.cleanupResult) {
+          if (t.isFailed) this.cleanupApplyError = t.error || 'Cleanup failed'
+          else if (t.data?.cleanupResult) {
             this.cleanupResult = t.data.cleanupResult
-            // Re-scan to refresh the remaining empty list
             this.startCleanupScan()
           }
           this.cleanupApplyTaskId = null

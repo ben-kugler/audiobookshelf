@@ -102,6 +102,11 @@ class Database {
     return this.models.libraryItem
   }
 
+  /** @type {typeof import('./models/PendingImport')} */
+  get pendingImportModel() {
+    return this.models.pendingImport
+  }
+
   /** @type {typeof import('./models/MediaProgress')} */
   get mediaProgressModel() {
     return this.models.mediaProgress
@@ -340,6 +345,7 @@ class Database {
     require('./models/Setting').init(this.sequelize)
     require('./models/CustomMetadataProvider').init(this.sequelize)
     require('./models/MediaItemShare').init(this.sequelize)
+    require('./models/PendingImport').init(this.sequelize)
 
     return this.sequelize.sync({ force, alter: false })
   }

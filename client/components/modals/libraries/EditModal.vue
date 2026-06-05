@@ -129,7 +129,9 @@ export default {
           onlyShowLaterBooksInContinueSeries: false,
           metadataPrecedence: ['folderStructure', 'audioMetatags', 'nfoFile', 'txtFiles', 'opfFile', 'absMetadata'],
           markAsFinishedPercentComplete: null,
-          markAsFinishedTimeRemaining: 10
+          markAsFinishedTimeRemaining: 10,
+          importFolder: null,
+          importFolderEnabled: false
         }
       }
     },

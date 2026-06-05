@@ -15,6 +15,8 @@ const Logger = require('../Logger')
  * @property {number} markAsFinishedTimeRemaining Time remaining in seconds to mark as finished. (defaults to 10s)
  * @property {number} markAsFinishedPercentComplete Percent complete to mark as finished (0-100). If this is set it will be used over markAsFinishedTimeRemaining.
  * @property {{folderTemplate: string, fileTemplate: string}|null} reorganize Path templates used by the bulk-reorganize admin tool (book libraries only). null disables the feature.
+ * @property {string|null} importFolder Absolute path to a folder watched for incoming files to import. null disables.
+ * @property {boolean} importFolderEnabled If true, the import-folder watcher actively monitors importFolder. importFolder must be set when this is true.
  */
 
 class Library extends Model {
@@ -81,7 +83,9 @@ class Library extends Model {
         reorganize: {
           folderTemplate: '{author}/{series}/{title}',
           fileTemplate: '{title}'
-        }
+        },
+        importFolder: null,
+        importFolderEnabled: false
       }
     }
   }
