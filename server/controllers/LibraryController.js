@@ -9,6 +9,7 @@ const libraryItemsBookFilters = require('../utils/queries/libraryItemsBookFilter
 const libraryItemFilters = require('../utils/queries/libraryItemFilters')
 const seriesFilters = require('../utils/queries/seriesFilters')
 const fileUtils = require('../utils/fileUtils')
+const { validateReorganizeSettings } = require('../utils/reorganizeTemplate')
 const { createNewSortInstance } = require('../libs/fastSort')
 const naturalSort = createNewSortInstance({
   comparer: new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }).compare
@@ -110,6 +111,12 @@ class LibraryController {
               return res.status(400).send(`Invalid request. Setting "${key}" must be greater than or equal to 0`)
             }
             newLibraryPayload.settings[key] = req.body.settings[key] === null ? null : Number(req.body.settings[key])
+          } else if (key === 'reorganize') {
+            const result = validateReorganizeSettings(req.body.settings[key])
+            if (!result.valid) {
+              return res.status(400).send(`Invalid request. Setting "reorganize" ${result.error}`)
+            }
+            newLibraryPayload.settings[key] = req.body.settings[key] === null ? null : { ...req.body.settings[key] }
           } else {
             if (typeof req.body.settings[key] !== typeof newLibraryPayload.settings[key]) {
               return res.status(400).send(`Invalid request. Setting "${key}" must be of type ${typeof newLibraryPayload.settings[key]}`)
@@ -353,6 +360,18 @@ class LibraryController {
             hasUpdates = true
             updatedSettings[key] = req.body.settings[key] === null ? null : Number(req.body.settings[key])
             Logger.debug(`[LibraryController] Library "${req.library.name}" updating setting "${key}" to "${updatedSettings[key]}"`)
+          }
+        } else if (key === 'reorganize') {
+          const result = validateReorganizeSettings(req.body.settings[key])
+          if (!result.valid) {
+            Logger.error(`[LibraryController] Invalid request. Setting "reorganize" ${result.error}`)
+            return res.status(400).send(`Invalid request. Setting "reorganize" ${result.error}`)
+          }
+          const next = req.body.settings[key] === null ? null : { ...req.body.settings[key] }
+          if (JSON.stringify(next) !== JSON.stringify(updatedSettings[key])) {
+            hasUpdates = true
+            updatedSettings[key] = next
+            Logger.debug(`[LibraryController] Library "${req.library.name}" updating setting "reorganize" to ${JSON.stringify(next)}`)
           }
         } else {
           if (typeof req.body.settings[key] !== typeof updatedSettings[key]) {

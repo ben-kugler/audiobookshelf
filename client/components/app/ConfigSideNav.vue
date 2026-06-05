@@ -106,6 +106,11 @@ export default {
           path: '/config/item-metadata-utils'
         },
         {
+          id: 'config-reorganize',
+          title: this.$strings.HeaderReorganize,
+          path: '/config/reorganize'
+        },
+        {
           id: 'config-rss-feeds',
           title: this.$strings.HeaderRSSFeeds,
           path: '/config/rss-feeds'

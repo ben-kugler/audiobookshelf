@@ -35,6 +35,7 @@ const MiscController = require('../controllers/MiscController')
 const ShareController = require('../controllers/ShareController')
 const StatsController = require('../controllers/StatsController')
 const ApiKeyController = require('../controllers/ApiKeyController')
+const ReorganizeController = require('../controllers/ReorganizeController')
 
 class ApiRouter {
   constructor(Server) {
@@ -95,6 +96,12 @@ class ApiRouter {
     this.router.post('/libraries/:id/remove-metadata', LibraryController.middleware.bind(this), LibraryController.removeAllMetadataFiles.bind(this))
     this.router.get('/libraries/:id/podcast-titles', LibraryController.middleware.bind(this), LibraryController.getPodcastTitles.bind(this))
     this.router.get('/libraries/:id/download', LibraryController.middleware.bind(this), LibraryController.downloadMultiple.bind(this))
+
+    this.router.post('/libraries/:id/reorganize/preview', LibraryController.middleware.bind(this), ReorganizeController.preview.bind(ReorganizeController))
+    this.router.post('/libraries/:id/reorganize/scan', LibraryController.middleware.bind(this), ReorganizeController.scan.bind(ReorganizeController))
+    this.router.post('/libraries/:id/reorganize/apply', LibraryController.middleware.bind(this), ReorganizeController.apply.bind(ReorganizeController))
+    this.router.post('/libraries/:id/reorganize/cleanup/scan', LibraryController.middleware.bind(this), ReorganizeController.cleanupScan.bind(ReorganizeController))
+    this.router.post('/libraries/:id/reorganize/cleanup/apply', LibraryController.middleware.bind(this), ReorganizeController.cleanupApply.bind(ReorganizeController))
 
     //
     // Item Routes

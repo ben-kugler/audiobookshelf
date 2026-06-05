@@ -37,6 +37,19 @@ class TaskManager {
   }
 
   /**
+   * Re-emit a task_started event for an in-flight task so the client store's
+   * addUpdateTask upserts the latest description/data. Useful for batch
+   * operations that want to push incremental progress through existing
+   * task event plumbing without introducing a new event type.
+   *
+   * @param {Task} task
+   */
+  notifyTaskUpdate(task) {
+    if (!this.tasks.some((t) => t.id === task.id)) return
+    SocketAuthority.emitter('task_started', task.toJSON())
+  }
+
+  /**
    * Create new task and add
    *
    * @param {string} action

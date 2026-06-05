@@ -14,6 +14,7 @@ const Logger = require('../Logger')
  * @property {string[]} metadataPrecedence
  * @property {number} markAsFinishedTimeRemaining Time remaining in seconds to mark as finished. (defaults to 10s)
  * @property {number} markAsFinishedPercentComplete Percent complete to mark as finished (0-100). If this is set it will be used over markAsFinishedTimeRemaining.
+ * @property {{folderTemplate: string, fileTemplate: string}|null} reorganize Path templates used by the bulk-reorganize admin tool (book libraries only). null disables the feature.
  */
 
 class Library extends Model {
@@ -76,7 +77,11 @@ class Library extends Model {
         onlyShowLaterBooksInContinueSeries: false,
         metadataPrecedence: this.defaultMetadataPrecedence,
         markAsFinishedPercentComplete: null,
-        markAsFinishedTimeRemaining: 10
+        markAsFinishedTimeRemaining: 10,
+        reorganize: {
+          folderTemplate: '{author}/{series}/{title}',
+          fileTemplate: '{title}'
+        }
       }
     }
   }
