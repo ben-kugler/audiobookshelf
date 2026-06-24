@@ -2,6 +2,7 @@
   <tr>
     <td class="px-4">
       {{ showFullPath ? file.metadata.path : file.metadata.relPath }} <ui-tooltip :text="$strings.LabelPrimaryEbook" class="inline-block"><span v-if="isPrimary" class="material-symbols text-success align-text-bottom">check_circle</span></ui-tooltip>
+      <span v-if="isReadAlong" class="inline-block ml-1 px-1.5 py-0.5 rounded text-xs bg-warning/20 text-warning align-middle">{{ $strings.LabelReadAlong }}</span>
     </td>
     <td>
       {{ $bytesPretty(file.metadata.size) }}
@@ -51,6 +52,9 @@ export default {
     },
     isPrimary() {
       return !this.file.isSupplementary
+    },
+    isReadAlong() {
+      return !!this.file.isReadAlong
     },
     libraryIsAudiobooksOnly() {
       return this.$store.getters['libraries/getLibraryIsAudiobooksOnly']
