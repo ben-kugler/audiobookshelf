@@ -5,7 +5,7 @@ const Database = require('../Database')
 const Watcher = require('../Watcher')
 const TaskManager = require('../managers/TaskManager')
 const { getFileTimestampsWithIno } = require('./fileUtils')
-const { buildReorganizePlan } = require('./reorganizePlanner')
+const { buildReorganizePlan, planMoveForItem } = require('./reorganizePlanner')
 
 const inFlightLibraries = new Set()
 
@@ -17,11 +17,42 @@ function isLibraryReorganizing(libraryId) {
  * Try to restore a moved file/folder back to its original location.
  * Returns true if the source path is in its original place at the end.
  *
- * @param {string} fromAbs - the original source path
- * @param {string} toAbs - the new path the file/folder was moved to
+ * For a promote-to-folder move the audio file lives inside the newly-created
+ * folder; restore it to the original file path and remove the (now empty)
+ * folder.
+ *
+ * @param {object} move
  */
-async function tryRollbackMove(fromAbs, toAbs) {
+async function tryRollbackMove(move) {
+  const fromAbs = move.fromAbsPath
+  const toAbs = move.toAbsPath
   try {
+    if (move.inPlacePromotion) {
+      // The folder existed before us; only the audio file may have been
+      // renamed in place. If it was renamed, move it back. If not, nothing
+      // to undo on disk.
+      const audioAt = move.fileChanges?.[0]?.toPath
+      if (!audioAt || audioAt === fromAbs) return true
+      const stillAtNew = await fsExtra.pathExists(audioAt)
+      const sourceExists = await fsExtra.pathExists(fromAbs)
+      if (!stillAtNew || sourceExists) return false
+      await fsExtra.move(audioAt, fromAbs, { overwrite: false })
+      return true
+    }
+    if (move.promoteToFolder) {
+      const audioAt = move.fileChanges?.[0]?.toPath
+      if (!audioAt) return false
+      const stillAtNew = await fsExtra.pathExists(audioAt)
+      const sourceExists = await fsExtra.pathExists(fromAbs)
+      if (!stillAtNew || sourceExists) return false
+      await fsExtra.move(audioAt, fromAbs, { overwrite: false })
+      try {
+        await fsExtra.remove(toAbs)
+      } catch (e) {
+        Logger.warn(`[reorganizeExecutor] Rollback could not remove empty promoted folder "${toAbs}":`, e.message)
+      }
+      return true
+    }
     const stillAtNew = await fsExtra.pathExists(toAbs)
     if (!stillAtNew) return false
     const sourceExists = await fsExtra.pathExists(fromAbs)
@@ -29,7 +60,7 @@ async function tryRollbackMove(fromAbs, toAbs) {
     await fsExtra.move(toAbs, fromAbs, { overwrite: false })
     return true
   } catch (err) {
-    Logger.error(`[reorganizeExecutor] Rollback move failed (${toAbs} -> ${fromAbs}):`, err.message)
+    Logger.error(`[reorganizeExecutor] Rollback move failed for item ${move.itemId}:`, err.message)
     return false
   }
 }
@@ -54,6 +85,13 @@ async function safeStat(absPath) {
  * @param {object} move
  */
 async function applyPathRewrites(libraryItem, book, move) {
+  // Promotion flips a single-file item into a folder item before path math runs,
+  // so the size-update branch below treats it as a folder (sum of libraryFiles).
+  if (move.promoteToFolder) {
+    libraryItem.isFile = false
+    libraryItem.changed('isFile', true)
+  }
+
   // LibraryItem-level fields
   libraryItem.path = move.toAbsPath
   libraryItem.relPath = move.toRelPath
@@ -174,22 +212,49 @@ async function executeSingleMove(move) {
     cleanupWatcher()
     return { outcome: 'failed', itemId: move.itemId, fromRelPath: move.fromRelPath, toRelPath: move.toRelPath, reason: 'sourceVanished' }
   }
-  if (await fsExtra.pathExists(toAbs)) {
+  // For an in-place promotion `toAbs` (the new item folder) IS the file's
+  // current parent — it has to exist. We skip the existence check here and let
+  // the planner's audio-collision check handle the only real conflict for this
+  // case (an unrelated file already at the renamed audio path).
+  if (!move.inPlacePromotion && (await fsExtra.pathExists(toAbs))) {
     cleanupWatcher()
     return { outcome: 'failed', itemId: move.itemId, fromRelPath: move.fromRelPath, toRelPath: move.toRelPath, reason: 'destinationExists' }
   }
 
-  // Ensure parent dir exists
+  // Ensure parent dir exists. For promotion the destination IS the new folder
+  // we want to create; for regular moves we only create the parent. In-place
+  // promotions need nothing — the folder already exists.
   try {
-    await fsExtra.ensureDir(Path.dirname(toAbs))
+    if (move.inPlacePromotion) {
+      // nothing
+    } else if (move.promoteToFolder) {
+      await fsExtra.ensureDir(toAbs)
+    } else {
+      await fsExtra.ensureDir(Path.dirname(toAbs))
+    }
   } catch (err) {
     cleanupWatcher()
     return { outcome: 'failed', itemId: move.itemId, fromRelPath: move.fromRelPath, toRelPath: move.toRelPath, reason: 'ensureDirFailed', error: err.message }
   }
 
-  // The move itself
+  // The move itself. Promotion moves the audio file *into* the new folder
+  // (and renames it per the file template); regular moves rename file->file or
+  // folder->folder in place. In-place promotion only renames the audio if the
+  // template produces a different filename — and skips the rename entirely if
+  // the filename already matches.
   try {
-    await fsExtra.move(fromAbs, toAbs, { overwrite: false })
+    if (move.inPlacePromotion) {
+      const audioTo = move.fileChanges?.[0]?.toPath
+      if (audioTo && audioTo !== fromAbs) {
+        await fsExtra.move(fromAbs, audioTo, { overwrite: false })
+      }
+    } else if (move.promoteToFolder) {
+      const audioTo = move.fileChanges?.[0]?.toPath
+      if (!audioTo) throw new Error('promoteToFolder move missing fileChanges[0].toPath')
+      await fsExtra.move(fromAbs, audioTo, { overwrite: false })
+    } else {
+      await fsExtra.move(fromAbs, toAbs, { overwrite: false })
+    }
   } catch (err) {
     cleanupWatcher()
     return { outcome: 'failed', itemId: move.itemId, fromRelPath: move.fromRelPath, toRelPath: move.toRelPath, reason: 'moveError', error: err.message }
@@ -217,7 +282,7 @@ async function executeSingleMove(move) {
     } catch (e) {
       /* noop */
     }
-    const rolledBack = await tryRollbackMove(fromAbs, toAbs)
+    const rolledBack = await tryRollbackMove(move)
     cleanupWatcher()
     return {
       outcome: 'failed',
@@ -304,7 +369,47 @@ async function executeReorganization(library, requested, task) {
   }
 }
 
+/**
+ * Auto-sort a single library item using the library's reorganize templates.
+ * Skipped (returns { outcome: 'skipped' }) if the library has no templates
+ * configured, the item is already at the desired path, or planning is blocked.
+ *
+ * Caller is expected to have already persisted any metadata changes that
+ * motivated the re-sort. The returned result mirrors `executeSingleMove`.
+ *
+ * @param {import('../models/LibraryItem')} libraryItem - expanded; libraryItem.media is the Book
+ * @param {import('../models/Library')} library - must include libraryFolders
+ * @returns {Promise<{outcome:string, itemId?:string, fromRelPath?:string, toRelPath?:string, reason?:string, error?:string}>}
+ */
+async function reorganizeSingleItem(libraryItem, library) {
+  if (library.mediaType !== 'book') {
+    return { outcome: 'skipped', reason: 'notBookLibrary' }
+  }
+  const templates = library.settings?.reorganize
+  if (!templates?.folderTemplate || !templates?.fileTemplate) {
+    return { outcome: 'skipped', reason: 'noTemplates' }
+  }
+  if (inFlightLibraries.has(library.id)) {
+    return { outcome: 'skipped', reason: 'libraryBusy' }
+  }
+  const folder = (library.libraryFolders || []).find((f) => f.id === libraryItem.libraryFolderId)
+  if (!folder) {
+    return { outcome: 'skipped', reason: 'unknownLibraryFolder' }
+  }
+
+  const planResult = planMoveForItem(libraryItem, folder, templates.folderTemplate, templates.fileTemplate)
+  if (planResult.kind === 'alreadyCorrect') {
+    return { outcome: 'skipped', reason: 'alreadyCorrect' }
+  }
+  if (planResult.kind === 'blocked') {
+    return { outcome: 'skipped', reason: planResult.reason, placeholder: planResult.placeholder }
+  }
+
+  return executeSingleMove(planResult.move)
+}
+
 module.exports = {
   executeReorganization,
+  reorganizeSingleItem,
   isLibraryReorganizing
 }

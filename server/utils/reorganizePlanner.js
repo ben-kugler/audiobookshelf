@@ -191,6 +191,127 @@ function planFolderMediaRewrites(book, oldItemAbsPath, newItemAbsPath, libraryFo
 }
 
 /**
+ * Plan a single item's move (or determine it is already correct / blocked).
+ * Pure function - does not check destination conflicts (caller's responsibility).
+ *
+ * @param {import('../models/LibraryItem')} item - expanded; item.media is the Book
+ * @param {import('../models/LibraryFolder')} folder - the library folder containing the item
+ * @param {string} folderTemplate
+ * @param {string} fileTemplate
+ * @returns {{kind:'alreadyCorrect', relPath:string, title:string|null}
+ *          |{kind:'blocked', reason:string, title:string|null, placeholder?:string}
+ *          |{kind:'move', move:object}}
+ */
+function planMoveForItem(item, folder, folderTemplate, fileTemplate) {
+  const folderPlaceholders = placeholdersIn(folderTemplate)
+  const filePlaceholders = placeholdersIn(fileTemplate)
+  const usedPlaceholders = new Set([...folderPlaceholders, ...filePlaceholders])
+
+  const context = buildContext(item.media)
+
+  for (const ph of usedPlaceholders) {
+    if (!ALLOWED_PLACEHOLDERS.includes(ph)) continue
+    if (OPTIONAL_PLACEHOLDERS.has(ph)) continue
+    if (!context[ph]) {
+      return { kind: 'blocked', reason: 'missingPlaceholder', title: context.title || null, placeholder: ph }
+    }
+  }
+  if (!context.title && filePlaceholders.has('title')) {
+    return { kind: 'blocked', reason: 'missingTitle', title: null }
+  }
+
+  const renderedFolder = renderTemplate(folderTemplate, context)
+  if (!renderedFolder) {
+    return { kind: 'blocked', reason: 'emptyFolderTemplate', title: context.title || null }
+  }
+  const renderedFile = renderTemplate(fileTemplate, context)
+  if (!renderedFile && item.isFile) {
+    return { kind: 'blocked', reason: 'emptyFileTemplate', title: context.title || null }
+  }
+
+  const folderAbs = filePathToPOSIX(folder.path)
+
+  // Single-file items get promoted to a folder containing the (possibly renamed)
+  // audio file. After this runs they are folder-based items (isFile=false), so
+  // the rest of the app — including ebook attach — treats them like any other
+  // folder item. When the file already lives inside the folder the template
+  // would build, it's an in-place promotion: no on-disk move, just flip isFile
+  // and rewrite paths in the DB (with an in-folder rename if the file template
+  // produces a different filename).
+  const promoteToFolder = !!item.isFile
+  const ext = item.isFile ? extOf(item.path) : ''
+  const expectedRelPath = renderedFolder
+  const promotedAudioRel = promoteToFolder ? `${renderedFolder}/${renderedFile}${ext}` : null
+
+  const currentRel = normRel(item.relPath)
+  const expectedRel = normRel(expectedRelPath)
+
+  if (!promoteToFolder && currentRel === expectedRel) {
+    return { kind: 'alreadyCorrect', relPath: currentRel, title: context.title || null }
+  }
+
+  const oldItemAbs = filePathToPOSIX(item.path)
+  const newItemAbs = `${folderAbs}/${expectedRel}`
+
+  let fileChanges = []
+  let mediaRewrites = { audioFileChanges: [], ebookFileChange: null, coverChange: null }
+  let inPlacePromotion = false
+  if (promoteToFolder) {
+    const audioToAbs = `${folderAbs}/${promotedAudioRel}`
+    const audioToRel = '/' + promotedAudioRel
+    const currentParentAbs = filePathToPOSIX(Path.dirname(oldItemAbs))
+    inPlacePromotion = currentParentAbs === newItemAbs
+
+    if (inPlacePromotion && oldItemAbs === audioToAbs) {
+      // Nothing to do on disk — the file already lives where the templates want
+      // and has the templated filename. Pure DB reclassification.
+      fileChanges = []
+    } else {
+      fileChanges = [{
+        ino: item.libraryFiles?.[0]?.ino,
+        fromPath: oldItemAbs,
+        toPath: audioToAbs,
+        fromRelPath: item.libraryFiles?.[0]?.metadata?.relPath,
+        toRelPath: audioToRel
+      }]
+    }
+    const af = item.media.audioFiles?.[0]
+    if (af) {
+      mediaRewrites.audioFileChanges = [{
+        ino: af.ino,
+        fromPath: oldItemAbs,
+        toPath: audioToAbs,
+        fromRelPath: af.metadata?.relPath,
+        toRelPath: audioToRel
+      }]
+    }
+  } else {
+    fileChanges = planFolderFileMoves(item.libraryFiles, oldItemAbs, newItemAbs, folderAbs)
+    mediaRewrites = planFolderMediaRewrites(item.media, oldItemAbs, newItemAbs, folderAbs)
+  }
+
+  return {
+    kind: 'move',
+    move: {
+      itemId: item.id,
+      title: context.title,
+      libraryFolderId: folder.id,
+      fromAbsPath: oldItemAbs,
+      toAbsPath: newItemAbs,
+      fromRelPath: '/' + currentRel,
+      toRelPath: '/' + expectedRel,
+      isFile: item.isFile,
+      promoteToFolder,
+      inPlacePromotion,
+      fileChanges,
+      audioFileChanges: mediaRewrites.audioFileChanges,
+      ebookFileChange: mediaRewrites.ebookFileChange,
+      coverChange: mediaRewrites.coverChange
+    }
+  }
+}
+
+/**
  * Build a dry-run reorganization plan for a book library.
  *
  * @param {import('../models/Library')} library - must include libraryFolders and have settings.reorganize set
@@ -207,7 +328,6 @@ async function buildReorganizePlan(library) {
   const folderTemplate = templates.folderTemplate
   const fileTemplate = templates.fileTemplate
 
-  // Map libraryFolderId -> folder
   const folderById = new Map()
   for (const f of library.libraryFolders || []) {
     folderById.set(f.id, f)
@@ -215,10 +335,6 @@ async function buildReorganizePlan(library) {
   if (!folderById.size) {
     throw new Error('Library has no folders to organize within')
   }
-
-  const folderPlaceholders = placeholdersIn(folderTemplate)
-  const filePlaceholders = placeholdersIn(fileTemplate)
-  const usedPlaceholders = new Set([...folderPlaceholders, ...filePlaceholders])
 
   const items = await Database.libraryItemModel.findAllExpandedWhere({ libraryId: library.id })
 
@@ -229,7 +345,6 @@ async function buildReorganizePlan(library) {
 
   for (const item of items) {
     if (item.mediaType !== 'book' || !item.media) {
-      // Defensive: skip non-book or unexpanded
       continue
     }
     const folder = folderById.get(item.libraryFolderId)
@@ -238,105 +353,16 @@ async function buildReorganizePlan(library) {
       continue
     }
 
-    const context = buildContext(item.media)
-
-    // Missing-required-placeholder check
-    let missingPlaceholder = null
-    for (const ph of usedPlaceholders) {
-      if (!ALLOWED_PLACEHOLDERS.includes(ph)) continue
-      if (OPTIONAL_PLACEHOLDERS.has(ph)) continue
-      if (!context[ph]) {
-        missingPlaceholder = ph
-        break
-      }
-    }
-    if (missingPlaceholder) {
-      blocked.push({
-        itemId: item.id,
-        title: context.title || '(untitled)',
-        reason: 'missingPlaceholder',
-        placeholder: missingPlaceholder
-      })
-      continue
-    }
-    if (!context.title && filePlaceholders.has('title')) {
-      blocked.push({ itemId: item.id, title: '(untitled)', reason: 'missingTitle' })
-      continue
-    }
-
-    const renderedFolder = renderTemplate(folderTemplate, context)
-    if (!renderedFolder) {
-      blocked.push({ itemId: item.id, title: context.title || '(untitled)', reason: 'emptyFolderTemplate' })
-      continue
-    }
-    const renderedFile = renderTemplate(fileTemplate, context)
-    if (!renderedFile && item.isFile) {
-      blocked.push({ itemId: item.id, title: context.title || '(untitled)', reason: 'emptyFileTemplate' })
-      continue
-    }
-
-    const folderAbs = filePathToPOSIX(folder.path)
-
-    let expectedRelPath
-    if (item.isFile) {
-      const ext = extOf(item.path)
-      expectedRelPath = `${renderedFolder}/${renderedFile}${ext}`
+    const result = planMoveForItem(item, folder, folderTemplate, fileTemplate)
+    if (result.kind === 'blocked') {
+      const entry = { itemId: item.id, title: result.title || '(untitled)', reason: result.reason }
+      if (result.placeholder) entry.placeholder = result.placeholder
+      blocked.push(entry)
+    } else if (result.kind === 'alreadyCorrect') {
+      alreadyCorrect.push({ itemId: item.id, title: result.title, relPath: result.relPath })
     } else {
-      expectedRelPath = renderedFolder
+      moves.push(result.move)
     }
-
-    const currentRel = normRel(item.relPath)
-    const expectedRel = normRel(expectedRelPath)
-
-    if (currentRel === expectedRel) {
-      alreadyCorrect.push({ itemId: item.id, title: context.title, relPath: currentRel })
-      continue
-    }
-
-    const oldItemAbs = filePathToPOSIX(item.path)
-    const newItemAbs = `${folderAbs}/${expectedRel}`
-
-    let fileChanges = []
-    let mediaRewrites = { audioFileChanges: [], ebookFileChange: null, coverChange: null }
-    if (!item.isFile) {
-      fileChanges = planFolderFileMoves(item.libraryFiles, oldItemAbs, newItemAbs, folderAbs)
-      mediaRewrites = planFolderMediaRewrites(item.media, oldItemAbs, newItemAbs, folderAbs)
-    } else {
-      // Single-file items have one libraryFile entry which is the item itself.
-      fileChanges = [{
-        ino: item.libraryFiles?.[0]?.ino,
-        fromPath: oldItemAbs,
-        toPath: newItemAbs,
-        fromRelPath: item.libraryFiles?.[0]?.metadata?.relPath,
-        toRelPath: '/' + expectedRel
-      }]
-      // For single-file items the audio file IS the item.
-      const af = item.media.audioFiles?.[0]
-      if (af) {
-        mediaRewrites.audioFileChanges = [{
-          ino: af.ino,
-          fromPath: oldItemAbs,
-          toPath: newItemAbs,
-          fromRelPath: af.metadata?.relPath,
-          toRelPath: '/' + expectedRel
-        }]
-      }
-    }
-
-    moves.push({
-      itemId: item.id,
-      title: context.title,
-      libraryFolderId: folder.id,
-      fromAbsPath: oldItemAbs,
-      toAbsPath: newItemAbs,
-      fromRelPath: '/' + currentRel,
-      toRelPath: '/' + expectedRel,
-      isFile: item.isFile,
-      fileChanges,
-      audioFileChanges: mediaRewrites.audioFileChanges,
-      ebookFileChange: mediaRewrites.ebookFileChange,
-      coverChange: mediaRewrites.coverChange
-    })
   }
 
   // Conflict detection: duplicate destinations
@@ -363,10 +389,23 @@ async function buildReorganizePlan(library) {
     }
   }
 
-  // Conflict detection: destination already exists on disk
+  // Conflict detection: destination already exists on disk.
+  // In-place promotions are expected to land in an existing folder (the file's
+  // current parent), so we skip the folder check for them and instead check
+  // that the audio file's final path doesn't collide with a different file.
   const remaining = moves.filter((mv) => !dupKeys.has(mv.toAbsPath))
   await Promise.all(remaining.map(async (mv) => {
     try {
+      if (mv.inPlacePromotion) {
+        const audioTo = mv.audioFileChanges?.[0]?.toPath
+        if (audioTo && filePathToPOSIX(audioTo) !== mv.fromAbsPath) {
+          const exists = await fsExtra.pathExists(audioTo)
+          if (exists) {
+            conflicts.push({ itemId: mv.itemId, title: mv.title, toRelPath: mv.toRelPath, reason: 'destinationExists' })
+          }
+        }
+        return
+      }
       const exists = await fsExtra.pathExists(mv.toAbsPath)
       if (exists && filePathToPOSIX(mv.toAbsPath) !== mv.fromAbsPath) {
         conflicts.push({
@@ -377,7 +416,7 @@ async function buildReorganizePlan(library) {
         })
       }
     } catch (err) {
-      Logger.warn(`[reorganizePlanner] pathExists failed for "${mv.toAbsPath}":`, err.message)
+      Logger.warn(`[reorganizePlanner] pathExists failed for move ${mv.itemId}:`, err.message)
     }
   }))
 
@@ -404,5 +443,6 @@ async function buildReorganizePlan(library) {
 module.exports = {
   buildContext,
   renderTemplate,
-  buildReorganizePlan
+  buildReorganizePlan,
+  planMoveForItem
 }
