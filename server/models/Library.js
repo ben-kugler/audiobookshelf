@@ -87,7 +87,13 @@ class Library extends Model {
         },
         autoApplyFileTemplate: false,
         importFolder: null,
-        importFolderEnabled: false
+        importFolderEnabled: false,
+        storyteller: {
+          enabled: false,
+          url: null,
+          username: null,
+          password: null
+        }
       }
     }
   }

@@ -83,6 +83,19 @@
           </ui-tooltip>
         </div>
       </div>
+      <div v-if="isBookLibrary" class="py-3">
+        <div class="flex items-center">
+          <ui-toggle-switch v-model="storytellerEnabled" size="sm" @input="formUpdated" />
+          <ui-tooltip :text="$strings.LabelSettingsStorytellerSyncHelp">
+            <p class="pl-4 text-base">{{ $strings.LabelSettingsStorytellerSync }}</p>
+          </ui-tooltip>
+        </div>
+        <div v-if="storytellerEnabled" class="pl-12 pt-2 max-w-md space-y-2">
+          <ui-text-input-with-label v-model="storytellerUrl" :label="$strings.LabelSettingsStorytellerUrl" placeholder="https://storyteller.example.com" @input="formUpdated" />
+          <ui-text-input-with-label v-model="storytellerUsername" :label="$strings.LabelSettingsStorytellerUsername" @input="formUpdated" />
+          <ui-text-input-with-label v-model="storytellerPassword" type="password" :label="$strings.LabelSettingsStorytellerPassword" @input="formUpdated" />
+        </div>
+      </div>
       <div v-if="isPodcastLibrary" class="p-2 w-full md:w-1/2">
         <ui-dropdown :label="$strings.LabelPodcastSearchRegion" v-model="podcastSearchRegion" :items="$podcastSearchRegionOptions" small class="max-w-72" menu-max-height="200px" @input="formUpdated" />
       </div>
@@ -124,6 +137,10 @@ export default {
       hideSingleBookSeries: false,
       onlyShowLaterBooksInContinueSeries: false,
       autoApplyFileTemplate: false,
+      storytellerEnabled: false,
+      storytellerUrl: null,
+      storytellerUsername: null,
+      storytellerPassword: null,
       podcastSearchRegion: 'us',
       markAsFinishedWhen: 'timeRemaining',
       markAsFinishedValue: 10
@@ -183,6 +200,12 @@ export default {
           hideSingleBookSeries: !!this.hideSingleBookSeries,
           onlyShowLaterBooksInContinueSeries: !!this.onlyShowLaterBooksInContinueSeries,
           autoApplyFileTemplate: !!this.autoApplyFileTemplate,
+          storyteller: {
+            enabled: !!this.storytellerEnabled,
+            url: this.storytellerUrl || null,
+            username: this.storytellerUsername || null,
+            password: this.storytellerPassword || null
+          },
           podcastSearchRegion: this.podcastSearchRegion,
           markAsFinishedTimeRemaining: markAsFinishedTimeRemaining,
           markAsFinishedPercentComplete: markAsFinishedPercentComplete
@@ -202,6 +225,11 @@ export default {
       this.hideSingleBookSeries = !!this.librarySettings.hideSingleBookSeries
       this.onlyShowLaterBooksInContinueSeries = !!this.librarySettings.onlyShowLaterBooksInContinueSeries
       this.autoApplyFileTemplate = !!this.librarySettings.autoApplyFileTemplate
+      const st = this.librarySettings.storyteller || {}
+      this.storytellerEnabled = !!st.enabled
+      this.storytellerUrl = st.url || null
+      this.storytellerUsername = st.username || null
+      this.storytellerPassword = st.password || null
       this.podcastSearchRegion = this.librarySettings.podcastSearchRegion || 'us'
       this.markAsFinishedWhen = this.librarySettings.markAsFinishedTimeRemaining ? 'timeRemaining' : 'percentComplete'
       if (!this.librarySettings.markAsFinishedTimeRemaining && !this.librarySettings.markAsFinishedPercentComplete) {
