@@ -98,7 +98,7 @@ async function executePendingImport(pendingImport) {
   }
 
   try { Watcher.removeIgnoreDir(target.path) } catch { /* noop */ }
-  return { status: 'imported', error: null }
+  return { status: 'imported', error: null, libraryItemId: target.id }
 }
 
 module.exports = {

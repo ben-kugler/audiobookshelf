@@ -673,6 +673,8 @@
   "LabelTags": "Tags",
   "LabelTagsAccessibleToUser": "Tags Accessible to User",
   "LabelTagsNotAccessibleToUser": "Tags not Accessible to User",
+  "LabelTaskGeneratingReadAlong": "Generating read-along",
+  "LabelTaskGeneratingReadAlongDescription": "Syncing ebook and audiobook with Storyteller",
   "LabelTasks": "Tasks Running",
   "LabelTextEditorBulletedList": "Bulleted list",
   "LabelTextEditorLink": "Link",
