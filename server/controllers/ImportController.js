@@ -161,10 +161,11 @@ class ImportController {
     await p.save()
     SocketAuthority.emitter('pending_import_updated', p.toJSON())
 
+    let importResult = null
     try {
-      const result = await executePendingImport(p)
-      p.status = result.status
-      p.error = result.error
+      importResult = await executePendingImport(p)
+      p.status = importResult.status
+      p.error = importResult.error
       await p.save()
     } catch (err) {
       Logger.error(`[ImportController] executePendingImport threw for ${p.id}:`, err)
@@ -173,6 +174,36 @@ class ImportController {
       await p.save()
     }
     SocketAuthority.emitter('pending_import_updated', p.toJSON())
+
+    // Storyteller read-along generation (fire-and-forget background task)
+    if (importResult?.status === 'imported' && importResult.libraryItemId) {
+      const library = await Database.libraryModel.findByPk(p.libraryId).catch(() => null)
+      if (library?.settings?.storyteller?.enabled && library.settings.storyteller.url) {
+        const libraryItem = await Database.libraryItemModel.getExpandedById(importResult.libraryItemId).catch(() => null)
+        if (libraryItem) {
+          const TaskManager = require('../managers/TaskManager')
+          const task = TaskManager.createAndAddTask(
+            'storyteller-readalong',
+            { text: 'Generating read-along', key: 'LabelTaskGeneratingReadAlong' },
+            { text: 'Syncing ebook and audiobook with Storyteller', key: 'LabelTaskGeneratingReadAlongDescription' },
+            true,
+            { libraryItemId: importResult.libraryItemId }
+          )
+          const { generateReadAlong } = require('../utils/storytellerSync')
+          generateReadAlong(libraryItem, library, task)
+            .then(() => {
+              task.setFinished()
+              TaskManager.taskFinished(task)
+            })
+            .catch((err) => {
+              Logger.error(`[ImportController] Storyteller read-along failed: ${err.message}`)
+              task.setFailed({ text: err.message, key: 'MessageError' })
+              TaskManager.taskFinished(task)
+            })
+        }
+      }
+    }
+
     return res.json(p.toJSON())
   }
 
