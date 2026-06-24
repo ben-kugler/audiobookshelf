@@ -44,7 +44,7 @@
 
 <script>
 import ePub from 'epubjs'
-import { parseSmil, rsvpWordIndex } from './storytellerSmil'
+import { parseSmil, rsvpWordIndex, ebookProgressFraction } from './storytellerSmil'
 
 // Seconds to nudge the RSVP word ahead of the audio clock (perception + output latency).
 const RSVP_LEAD = 0.2
@@ -72,7 +72,8 @@ export default {
       rsvp: false,
       rsvpWord: '',
       rsvpLead: RSVP_LEAD,
-      rafId: null
+      rafId: null,
+      lastReportedProgress: -1
     }
   },
   watch: {
@@ -154,6 +155,7 @@ export default {
         chapters.push({
           contentHref: item.href,
           audioUrl,
+          duration: timeline[timeline.length - 1].clipEnd,
           pars: timeline.map((p) => ({
             fragId: p.textSrc.split('#')[1] || '',
             start: p.clipBegin,
@@ -213,6 +215,19 @@ export default {
       const t = audio.currentTime
       const active = ch.pars.find((p) => t >= p.start && t < p.end)
       if (active && active.fragId !== this.activeFragId) this.highlight(active.fragId)
+      // Report ebook progress in ~1% steps while playing
+      const prog = this.currentProgress()
+      if (prog !== null && Math.abs(prog - this.lastReportedProgress) >= 0.01) this.reportProgress(prog)
+    },
+    currentProgress() {
+      return ebookProgressFraction(this.chapters.map((c) => c.duration), this.chapterIndex, this.$refs.audio?.currentTime || 0)
+    },
+    reportProgress(prog = this.currentProgress()) {
+      if (!this.keepProgress || prog === null) return
+      this.lastReportedProgress = prog
+      this.$axios.$patch(`/api/me/progress/${this.libraryItemId}`, { ebookProgress: prog }, { progress: false }).catch((error) => {
+        console.error('StorytellerReader.reportProgress failed:', error)
+      })
     },
     // RSVP word updates run on a rAF loop (not timeupdate, which only fires ~4x/sec
     // and lags the narration by up to 250ms).
@@ -268,6 +283,7 @@ export default {
     },
     pause() {
       this.$refs.audio && this.$refs.audio.pause()
+      this.reportProgress()
     },
     applyRate() {
       this.$refs.audio.playbackRate = this.rate
