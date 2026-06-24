@@ -23,7 +23,7 @@
       </button>
     </div>
 
-    <component v-if="componentName" ref="readerComponent" :is="componentName" :library-item="selectedLibraryItem" :player-open="!!streamLibraryItem" :keep-progress="keepProgress" :file-id="ebookFileId" @touchstart="touchstart" @touchend="touchend" @hook:mounted="readerMounted" />
+    <component v-if="componentName" ref="readerComponent" :is="componentName" :library-item="selectedLibraryItem" :player-open="!!streamLibraryItem" :keep-progress="keepProgress" :file-id="ebookFileId" @touchstart="touchstart" @touchend="touchend" @hook:mounted="readerMounted" @readNormally="ereaderModeNormal" />
 
     <!-- TOC side nav -->
     <div v-if="tocOpen" class="w-full h-full overflow-y-scroll absolute inset-0 bg-black/20 z-20" @click.stop.prevent="toggleToC"></div>
@@ -208,12 +208,14 @@ export default {
       }
     },
     componentName() {
+      if (this.ereaderMode === 'readalong' && this.ebookType === 'epub') return 'readers-storyteller-reader'
       if (this.ebookType === 'epub') return 'readers-epub-reader'
       else if (this.ebookType === 'mobi') return 'readers-mobi-reader'
       else if (this.ebookType === 'pdf') return 'readers-pdf-reader'
       else if (this.ebookType === 'comic') return 'readers-comic-reader'
       return null
     },
+    ereaderMode() { return this.$store.state.ereaderMode },
     streamLibraryItem() {
       return this.$store.state.streamLibraryItem
     },
@@ -286,6 +288,7 @@ export default {
     }
   },
   methods: {
+    ereaderModeNormal() { this.$store.commit('setEreaderMode', 'normal') },
     goToChapter(uri) {
       this.toggleToC()
       this.$refs.readerComponent.goToChapter(uri)
