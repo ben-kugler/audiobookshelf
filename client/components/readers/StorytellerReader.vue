@@ -1,7 +1,8 @@
 <!-- client/components/readers/StorytellerReader.vue -->
 <template>
   <div class="w-full h-full relative">
-    <div v-if="error" class="absolute inset-0 flex flex-col items-center justify-center text-center px-8 z-20">
+    <!-- z-10 keeps this below Reader.vue's close (✕) button (z-20) so it stays clickable -->
+    <div v-if="error" class="absolute inset-0 flex flex-col items-center justify-center text-center px-8 z-10">
       <p class="text-lg mb-4">{{ error }}</p>
       <ui-btn small @click="$emit('readNormally')">{{ $strings.ButtonRead }}</ui-btn>
     </div>
@@ -9,7 +10,7 @@
     <div id="readalong-viewer" class="w-full" :style="{ height: viewerHeight + 'px' }" />
 
     <!-- controls -->
-    <div class="absolute bottom-0 left-0 right-0 h-12 bg-bg flex items-center px-4 gap-3 z-10 border-t border-white/10">
+    <div v-show="!error" class="absolute bottom-0 left-0 right-0 h-12 bg-bg flex items-center px-4 gap-3 z-10 border-t border-white/10">
       <button :aria-label="playing ? 'Pause' : 'Play'" @click="togglePlay">
         <span class="material-symbols fill text-3xl">{{ playing ? 'pause' : 'play_arrow' }}</span>
       </button>
