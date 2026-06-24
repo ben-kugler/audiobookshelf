@@ -21,7 +21,9 @@ function collectPaths(libraryItem) {
 }
 
 /**
- * Generate a Storyteller read-along EPUB for an imported item and store it as the ebookFile.
+ * Generate a Storyteller read-along EPUB for an imported item and register it as a
+ * read-along supplementary file (isSupplementary:true, isReadAlong:true).
+ * The primary ebookFile is intentionally left untouched.
  * Non-destructive: throws on any failure, leaving the original ebookFile untouched.
  * The download goes to a .tmp path first; only on success is it renamed to the final path.
  *
