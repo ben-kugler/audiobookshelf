@@ -112,7 +112,6 @@ export default {
         const audioUrl = await this.book.archive.createUrl(audioPath, { base64: false })
         chapters.push({
           contentHref: item.href,
-          audioPath,
           audioUrl,
           pars: timeline.map((p) => ({
             fragId: p.textSrc.split('#')[1] || '',
@@ -134,7 +133,7 @@ export default {
     async loadChapter(i) {
       if (i < 0 || i >= this.chapters.length) {
         this.pause()
-        return
+        return false
       }
       this.chapterIndex = i
       const ch = this.chapters[i]
@@ -142,7 +141,9 @@ export default {
       const audio = this.$refs.audio
       audio.src = ch.audioUrl
       audio.playbackRate = this.rate
+      this.activeFragId = null
       this.attachClickHandlers()
+      return true
     },
     attachClickHandlers() {
       // tap a sentence to seek to it
@@ -166,6 +167,7 @@ export default {
       const audio = this.$refs.audio
       this.audioTime = audio.currentTime
       const ch = this.chapters[this.chapterIndex]
+      if (!ch) return
       const t = audio.currentTime
       const active = ch.pars.find((p) => t >= p.start && t < p.end)
       if (active && active.fragId !== this.activeFragId) this.highlight(active.fragId)
@@ -186,7 +188,7 @@ export default {
       this.activeFragId = fragId
     },
     onAudioEnded() {
-      this.loadChapter(this.chapterIndex + 1).then(() => this.$refs.audio.play())
+      this.loadChapter(this.chapterIndex + 1).then((loaded) => { if (loaded) this.$refs.audio.play() })
     },
     onAudioMeta() {
       this.audioDuration = this.$refs.audio.duration
