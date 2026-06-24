@@ -37,6 +37,18 @@ export function rsvpWordIndex(start, end, words, t, lead = 0) {
   return n - 1
 }
 
+// Overall ebook progress (0..1) for the read-along: time consumed (completed chapters
+// + position in the current one) over the total of all chapter durations. Returns null
+// when there is nothing to measure.
+export function ebookProgressFraction(durations, chapterIndex, currentTime) {
+  const total = durations.reduce((a, d) => a + (d || 0), 0)
+  if (!total) return null
+  let elapsed = 0
+  for (let i = 0; i < chapterIndex && i < durations.length; i++) elapsed += durations[i] || 0
+  elapsed += currentTime || 0
+  return Math.min(1, Math.max(0, elapsed / total))
+}
+
 export function parseSmil(xmlString) {
   const doc = new DOMParser().parseFromString(xmlString, 'application/xml')
   const pars = Array.from(doc.getElementsByTagName('par'))

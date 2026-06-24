@@ -1,4 +1,4 @@
-import { parseSmil, parseClock, rsvpWordIndex } from '@/components/readers/storytellerSmil'
+import { parseSmil, parseClock, rsvpWordIndex, ebookProgressFraction } from '@/components/readers/storytellerSmil'
 
 const SAMPLE = `<?xml version="1.0" encoding="UTF-8"?>
 <smil xmlns="http://www.w3.org/ns/SMIL" xmlns:epub="http://www.idpf.org/2007/ops" version="3.0">
@@ -35,6 +35,14 @@ describe('rsvpWordIndex', () => {
     expect(rsvpWordIndex(10, 20, ['aa', 'bb'], 10, 5)).to.equal(1)
   })
   it('returns 0 for an empty par', () => { expect(rsvpWordIndex(10, 20, [], 15)).to.equal(0) })
+})
+
+describe('ebookProgressFraction', () => {
+  const D = [10, 20, 30] // total 60
+  it('measures within the first chapter', () => { expect(ebookProgressFraction(D, 0, 6)).to.equal(0.1) })
+  it('counts completed chapters', () => { expect(ebookProgressFraction(D, 1, 5)).to.equal(0.25) })
+  it('clamps to 1 at the end', () => { expect(ebookProgressFraction(D, 2, 30)).to.equal(1) })
+  it('returns null when there is no duration', () => { expect(ebookProgressFraction([0, 0], 0, 5)).to.equal(null) })
 })
 
 describe('parseSmil', () => {
