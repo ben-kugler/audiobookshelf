@@ -177,7 +177,7 @@ class ImportController {
 
     // Storyteller read-along generation (fire-and-forget background task)
     if (importResult?.status === 'imported' && importResult.libraryItemId) {
-      const library = await Database.libraryModel.findByPk(p.libraryId).catch(() => null)
+      const library = await Database.libraryModel.findByPk(p.libraryId, { include: Database.libraryFolderModel }).catch(() => null)
       if (library?.settings?.storyteller?.enabled && library.settings.storyteller.url) {
         const libraryItem = await Database.libraryItemModel.getExpandedById(importResult.libraryItemId).catch(() => null)
         if (libraryItem) {
