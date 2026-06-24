@@ -18,6 +18,8 @@ const EBookFile = require('../objects/files/EBookFile')
 const AudioFile = require('../objects/files/AudioFile')
 const LibraryFile = require('../objects/files/LibraryFile')
 
+const { isReadAlongEbookFilename } = require('../utils/readAlong')
+
 const RssFeedManager = require('../managers/RssFeedManager')
 const CoverManager = require('../managers/CoverManager')
 
@@ -195,9 +197,11 @@ class BookScanner {
 
     // Check if ebook is not set and ebooks were found
     if (!media.ebookFile && !librarySettings.audiobooksOnly && libraryItemData.ebookLibraryFiles.length) {
-      // Prefer to use an epub ebook then fallback to the first ebook found
-      let ebookLibraryFile = libraryItemData.ebookLibraryFiles.find((lf) => lf.metadata.ext.slice(1).toLowerCase() === 'epub')
-      if (!ebookLibraryFile) ebookLibraryFile = libraryItemData.ebookLibraryFiles[0]
+      // Prefer a non-read-along ebook (prefer epub); fall back to read-along only if it is the only ebook
+      const nonReadAlong = libraryItemData.ebookLibraryFiles.filter((lf) => !isReadAlongEbookFilename(lf.metadata.filename))
+      const pool = nonReadAlong.length ? nonReadAlong : libraryItemData.ebookLibraryFiles
+      let ebookLibraryFile = pool.find((lf) => lf.metadata.ext.slice(1).toLowerCase() === 'epub')
+      if (!ebookLibraryFile) ebookLibraryFile = pool[0]
       ebookLibraryFile = ebookLibraryFile.toJSON()
       // Ebook file is the same as library file except for additional `ebookFormat`
       ebookLibraryFile.ebookFormat = ebookLibraryFile.metadata.ext.slice(1).toLowerCase()
@@ -442,7 +446,7 @@ class BookScanner {
       libraryItemUpdated = true
     }
 
-    // Check/update the isSupplementary flag on libraryFiles for the LibraryItem
+    // Check/update the isSupplementary + isReadAlong flags on libraryFiles for the LibraryItem
     for (const libraryFile of existingLibraryItem.libraryFiles) {
       if (globals.SupportedEbookTypes.includes(libraryFile.metadata.ext.slice(1).toLowerCase())) {
         if (media.ebookFile && libraryFile.ino === media.ebookFile.ino) {
@@ -452,6 +456,11 @@ class BookScanner {
           }
         } else if (libraryFile.isSupplementary !== true) {
           libraryFile.isSupplementary = true
+          libraryItemUpdated = true
+        }
+        const isReadAlong = isReadAlongEbookFilename(libraryFile.metadata.filename)
+        if (libraryFile.isReadAlong !== isReadAlong) {
+          libraryFile.isReadAlong = isReadAlong
           libraryItemUpdated = true
         }
       }
@@ -482,8 +491,13 @@ class BookScanner {
     let scannedAudioFiles = await AudioFileScanner.executeMediaFileScans(libraryItemData.mediaType, libraryItemData, libraryItemData.audioLibraryFiles)
     scannedAudioFiles = AudioFileScanner.runSmartTrackOrder(libraryItemData.relPath, scannedAudioFiles)
 
-    // Find ebook file (prefer epub)
-    let ebookLibraryFile = librarySettings.audiobooksOnly ? null : libraryItemData.ebookLibraryFiles.find((lf) => lf.metadata.ext.slice(1).toLowerCase() === 'epub') || libraryItemData.ebookLibraryFiles[0]
+    // Find ebook file (prefer a non-read-along epub; fall back to read-along only if it is the only ebook)
+    let ebookLibraryFile = null
+    if (!librarySettings.audiobooksOnly && libraryItemData.ebookLibraryFiles.length) {
+      const nonReadAlong = libraryItemData.ebookLibraryFiles.filter((lf) => !isReadAlongEbookFilename(lf.metadata.filename))
+      const pool = nonReadAlong.length ? nonReadAlong : libraryItemData.ebookLibraryFiles
+      ebookLibraryFile = pool.find((lf) => lf.metadata.ext.slice(1).toLowerCase() === 'epub') || pool[0]
+    }
 
     // Do not add library items that have no valid audio files and no ebook file
     if (!ebookLibraryFile && !scannedAudioFiles.length) {
@@ -585,10 +599,11 @@ class BookScanner {
     libraryItemObj.authorNamesFirstLast = bookMetadata.authors.join(', ')
     libraryItemObj.authorNamesLastFirst = bookMetadata.authors.map((author) => Database.authorModel.getLastFirst(author)).join(', ')
 
-    // Set isSupplementary flag on ebook library files
+    // Set isSupplementary + isReadAlong flags on ebook library files
     for (const libraryFile of libraryItemObj.libraryFiles) {
       if (globals.SupportedEbookTypes.includes(libraryFile.metadata.ext.slice(1).toLowerCase())) {
         libraryFile.isSupplementary = libraryFile.ino !== ebookLibraryFile?.ino
+        libraryFile.isReadAlong = isReadAlongEbookFilename(libraryFile.metadata.filename)
       }
     }
 
