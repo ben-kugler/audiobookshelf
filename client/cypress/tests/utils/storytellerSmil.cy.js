@@ -17,15 +17,24 @@ describe('parseClock', () => {
 })
 
 describe('rsvpWordIndex', () => {
-  // par spans 10s..20s, 4 words → 2.5s each
-  it('returns first word at the start', () => { expect(rsvpWordIndex(10, 20, 4, 10)).to.equal(0) })
-  it('advances through words over the span', () => {
-    expect(rsvpWordIndex(10, 20, 4, 12.6)).to.equal(1)
-    expect(rsvpWordIndex(10, 20, 4, 15.1)).to.equal(2)
-    expect(rsvpWordIndex(10, 20, 4, 17.6)).to.equal(3)
+  const EVEN = ['aa', 'bb', 'cc', 'dd'] // equal-length → uniform split over 10s..20s
+  it('returns first word at the start', () => { expect(rsvpWordIndex(10, 20, EVEN, 10)).to.equal(0) })
+  it('advances through equal-weight words over the span', () => {
+    expect(rsvpWordIndex(10, 20, EVEN, 12.6)).to.equal(1)
+    expect(rsvpWordIndex(10, 20, EVEN, 15.1)).to.equal(2)
+    expect(rsvpWordIndex(10, 20, EVEN, 17.6)).to.equal(3)
   })
-  it('clamps at the last word past the end', () => { expect(rsvpWordIndex(10, 20, 4, 99)).to.equal(3) })
-  it('returns 0 for an empty par', () => { expect(rsvpWordIndex(10, 20, 0, 15)).to.equal(0) })
+  it('clamps at the last word past the end', () => { expect(rsvpWordIndex(10, 20, EVEN, 99)).to.equal(3) })
+  it('weights longer words with more time', () => {
+    const words = ['I', 'elephant'] // weights 1, 8 over 10s
+    expect(rsvpWordIndex(10, 20, words, 10.5)).to.equal(0) // short word still showing early
+    expect(rsvpWordIndex(10, 20, words, 12)).to.equal(1) // long word dominates the span
+  })
+  it('lead nudges the index ahead', () => {
+    expect(rsvpWordIndex(10, 20, ['aa', 'bb'], 10, 0)).to.equal(0)
+    expect(rsvpWordIndex(10, 20, ['aa', 'bb'], 10, 5)).to.equal(1)
+  })
+  it('returns 0 for an empty par', () => { expect(rsvpWordIndex(10, 20, [], 15)).to.equal(0) })
 })
 
 describe('parseSmil', () => {

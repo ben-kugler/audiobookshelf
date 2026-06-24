@@ -239,7 +239,9 @@ export default {
       return this.tracks.length
     },
     showReadButton() {
-      return this.ebookFile
+      // Read appears whenever the item contains an epub to read plainly — the primary
+      // ebook, or (for an audiobook with only a read-along epub) the read-along file.
+      return !!this.ebookFile || !!this.readAlongFile
     },
     showReadAlongButton() {
       return !!this.readAlongFile
@@ -509,7 +511,9 @@ export default {
       this.$store.commit('showEditModalOnTab', { libraryItem: this.libraryItem, tab: 'cover' })
     },
     openEbook() {
-      this.$store.commit('showEReader', { libraryItem: this.libraryItem, keepProgress: true })
+      // Prefer the primary ebook; otherwise open the read-along epub as plain text.
+      const fileId = this.ebookFile ? undefined : this.readAlongFile?.ino
+      this.$store.commit('showEReader', { libraryItem: this.libraryItem, keepProgress: true, fileId })
     },
     openReadAlong() {
       this.$store.commit('showEReader', { libraryItem: this.libraryItem, keepProgress: true, mode: 'readalong', fileId: this.readAlongFile?.ino })

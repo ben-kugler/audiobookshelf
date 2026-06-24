@@ -16,14 +16,25 @@ export function parseClock(value) {
   return parseFloat(v) || 0
 }
 
-// RSVP: which word of a SMIL par is "current" at time t, by spreading the par's
-// [start,end] span evenly across its words (SMIL aligns per-sentence, not per-word).
-// Clamped to [0, count-1]; returns 0 for an empty par.
-export function rsvpWordIndex(start, end, count, t) {
-  if (!count || count < 1) return 0
+// RSVP: which word of a SMIL par is "current" at time t. SMIL aligns per-sentence,
+// not per-word, so we distribute the par's [start,end] span across its words weighted
+// by length (longer words are spoken longer — closer to real narration than a uniform
+// split). `lead` nudges the index ahead to compensate for sampling/perception latency.
+// Clamped to [0, words.length-1]; returns 0 for an empty par.
+export function rsvpWordIndex(start, end, words, t, lead = 0) {
+  const n = words ? words.length : 0
+  if (n < 1) return 0
   const dur = Math.max(0.001, end - start)
-  const frac = (t - start) / dur
-  return Math.min(count - 1, Math.max(0, Math.floor(frac * count)))
+  const weights = words.map((w) => Math.max(1, (w || '').length))
+  const total = weights.reduce((a, b) => a + b, 0)
+  const elapsed = Math.min(dur, Math.max(0, t - start + lead))
+  const target = (elapsed / dur) * total
+  let acc = 0
+  for (let i = 0; i < n; i++) {
+    acc += weights[i]
+    if (target < acc) return i
+  }
+  return n - 1
 }
 
 export function parseSmil(xmlString) {

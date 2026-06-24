@@ -41,6 +41,9 @@
 import ePub from 'epubjs'
 import { parseSmil, rsvpWordIndex } from './storytellerSmil'
 
+// Seconds to nudge the RSVP word ahead of the audio clock (perception + output latency).
+const RSVP_LEAD = 0.2
+
 export default {
   props: {
     libraryItem: { type: Object, required: true },
@@ -62,7 +65,14 @@ export default {
       error: null,
       loading: true,
       rsvp: false,
-      rsvpWord: ''
+      rsvpWord: '',
+      rafId: null
+    }
+  },
+  watch: {
+    rsvp(on) {
+      if (on) this.startRsvpLoop()
+      else this.stopRsvpLoop()
     }
   },
   computed: {
@@ -194,7 +204,31 @@ export default {
       const t = audio.currentTime
       const active = ch.pars.find((p) => t >= p.start && t < p.end)
       if (active && active.fragId !== this.activeFragId) this.highlight(active.fragId)
-      if (active && active.words) this.rsvpWord = active.words[rsvpWordIndex(active.start, active.end, active.words.length, t)] || ''
+    },
+    // RSVP word updates run on a rAF loop (not timeupdate, which only fires ~4x/sec
+    // and lags the narration by up to 250ms).
+    startRsvpLoop() {
+      if (this.rafId) return
+      const tick = () => {
+        if (!this.rsvp) { this.rafId = null; return }
+        this.updateRsvpWord()
+        this.rafId = requestAnimationFrame(tick)
+      }
+      this.rafId = requestAnimationFrame(tick)
+    },
+    stopRsvpLoop() {
+      if (this.rafId) {
+        cancelAnimationFrame(this.rafId)
+        this.rafId = null
+      }
+    },
+    updateRsvpWord() {
+      const audio = this.$refs.audio
+      const ch = this.chapters[this.chapterIndex]
+      if (!audio || !ch) return
+      const t = audio.currentTime
+      const active = ch.pars.find((p) => t >= p.start && t < p.end)
+      if (active && active.words) this.rsvpWord = active.words[rsvpWordIndex(active.start, active.end, active.words, t, RSVP_LEAD)] || ''
     },
     highlight(fragId) {
       const contents = this.rendition.getContents()
@@ -243,6 +277,7 @@ export default {
     })
   },
   beforeDestroy() {
+    this.stopRsvpLoop()
     this.pause()
     // ponytail: revoke blob URLs to free the (large) embedded audio
     for (const ch of this.chapters) {
