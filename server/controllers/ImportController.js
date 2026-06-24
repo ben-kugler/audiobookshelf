@@ -197,7 +197,7 @@ class ImportController {
             })
             .catch((err) => {
               Logger.error(`[ImportController] Storyteller read-along failed: ${err.message}`)
-              task.setFailed({ text: err.message, key: 'MessageError' })
+              task.setFailed({ text: err.message })
               TaskManager.taskFinished(task)
             })
         }
