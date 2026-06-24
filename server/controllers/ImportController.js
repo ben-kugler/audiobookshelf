@@ -61,15 +61,27 @@ class ImportController {
 
     const q = (req.query.q || '').toLowerCase().trim()
     const out = []
+    let droppedNoBook = 0
+    let droppedNoAudio = 0
+    let droppedByQuery = 0
     for (const it of items) {
       const book = it.book || it.media
-      if (!book) continue
+      if (!book) { droppedNoBook++; continue }
       // Only audiobooks (must have audio files; ebook may or may not exist)
-      if (!Array.isArray(book.audioFiles) || !book.audioFiles.length) continue
+      if (!Array.isArray(book.audioFiles) || !book.audioFiles.length) {
+        droppedNoAudio++
+        if (droppedNoAudio <= 5) {
+          Logger.info(`[ImportController.candidates] dropped (no audioFiles) itemId=${it.id} title="${book.title || ''}" audioFilesType=${typeof book.audioFiles} isArray=${Array.isArray(book.audioFiles)} len=${Array.isArray(book.audioFiles) ? book.audioFiles.length : 'n/a'}`)
+        }
+        continue
+      }
       const title = book.title || ''
       const authors = (book.authors || []).map((a) => a.name).filter(Boolean)
       const series = (book.series || []).map((s) => ({ name: s.name, sequence: s.bookSeries?.sequence || null }))
-      if (q && !title.toLowerCase().includes(q) && !authors.join(' ').toLowerCase().includes(q)) continue
+      if (q && !title.toLowerCase().includes(q) && !authors.join(' ').toLowerCase().includes(q)) {
+        droppedByQuery++
+        continue
+      }
       out.push({
         id: it.id,
         title,
@@ -78,6 +90,11 @@ class ImportController {
         hasEbook: !!book.ebookFile
       })
     }
+
+    // Independent sanity count: raw libraryItem rows matching the same WHERE, no joins.
+    const rawCount = await Database.libraryItemModel.count({ where: { libraryId, mediaType: 'book', isFile: false } })
+    const rawCountAll = await Database.libraryItemModel.count({ where: { libraryId } })
+    Logger.info(`[ImportController.candidates] libraryId=${libraryId} q="${q}" raw_all=${rawCountAll} raw_book_folder=${rawCount} fetched=${items.length} returned=${out.length} dropped_no_book=${droppedNoBook} dropped_no_audio=${droppedNoAudio} dropped_by_query=${droppedByQuery}`)
 
     out.sort((a, b) => a.title.localeCompare(b.title))
     return res.json({ candidates: out })

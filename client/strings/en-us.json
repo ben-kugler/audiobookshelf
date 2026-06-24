@@ -591,6 +591,8 @@
   "LabelSettingsAllowIframe": "Allow embedding in an iframe",
   "LabelSettingsAudiobooksOnly": "Audiobooks only",
   "LabelSettingsAudiobooksOnlyHelp": "Enabling this setting will ignore ebook files unless they are inside an audiobook folder in which case they will be set as supplementary ebooks",
+  "LabelSettingsAutoApplyFileTemplate": "Sort files on metadata update",
+  "LabelSettingsAutoApplyFileTemplateHelp": "When a book's metadata is updated, automatically apply the library's reorganize file template and move the item if its on-disk path no longer matches the template.",
   "LabelSettingsBookshelfViewHelp": "Skeumorphic design with wooden shelves",
   "LabelSettingsChromecastSupport": "Chromecast support",
   "LabelSettingsDateFormat": "Date Format",

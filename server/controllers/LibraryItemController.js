@@ -20,6 +20,8 @@ const CacheManager = require('../managers/CacheManager')
 const CoverManager = require('../managers/CoverManager')
 const ShareManager = require('../managers/ShareManager')
 
+const { reorganizeSingleItem } = require('../utils/reorganizeExecutor')
+
 /**
  * @typedef RequestUserObject
  * @property {import('../models/User')} user
@@ -278,6 +280,28 @@ class LibraryItemController {
 
       Logger.debug(`[LibraryItemController] Updated library item media ${req.libraryItem.media.title}`)
       SocketAuthority.libraryItemEmitter('item_updated', req.libraryItem)
+
+      if (req.libraryItem.isBook) {
+        const library = await Database.libraryModel.findByIdWithFolders(req.libraryItem.libraryId)
+        if (library?.settings?.autoApplyFileTemplate) {
+          const result = await reorganizeSingleItem(req.libraryItem, library).catch((err) => {
+            Logger.error(`[LibraryItemController] autoApplyFileTemplate threw for item "${req.libraryItem.id}":`, err)
+            return { outcome: 'failed', reason: 'exception', error: err.message }
+          })
+          if (result.outcome === 'succeeded') {
+            Logger.info(`[LibraryItemController] autoApplyFileTemplate moved "${req.libraryItem.media.title}" from "${result.fromRelPath}" to "${result.toRelPath}"`)
+            const refreshed = await Database.libraryItemModel.getExpandedById(req.libraryItem.id)
+            if (refreshed) {
+              req.libraryItem = refreshed
+              SocketAuthority.libraryItemEmitter('item_updated', req.libraryItem)
+            }
+          } else if (result.outcome === 'failed') {
+            Logger.warn(`[LibraryItemController] autoApplyFileTemplate failed for "${req.libraryItem.media.title}": ${result.reason}${result.error ? ' - ' + result.error : ''}`)
+          } else if (result.reason && result.reason !== 'alreadyCorrect') {
+            Logger.debug(`[LibraryItemController] autoApplyFileTemplate skipped for "${req.libraryItem.media.title}": ${result.reason}`)
+          }
+        }
+      }
     }
     res.json({
       updated: hasUpdates,

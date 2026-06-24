@@ -72,6 +72,17 @@
           </ui-tooltip>
         </div>
       </div>
+      <div v-if="isBookLibrary" class="p-2 w-full md:w-1/2">
+        <div class="flex items-center">
+          <ui-toggle-switch v-model="autoApplyFileTemplate" size="sm" @input="formUpdated" />
+          <ui-tooltip :text="$strings.LabelSettingsAutoApplyFileTemplateHelp">
+            <p class="pl-4 text-sm">
+              {{ $strings.LabelSettingsAutoApplyFileTemplate }}
+              <span class="material-symbols icon-text text-sm">info</span>
+            </p>
+          </ui-tooltip>
+        </div>
+      </div>
       <div v-if="isPodcastLibrary" class="p-2 w-full md:w-1/2">
         <ui-dropdown :label="$strings.LabelPodcastSearchRegion" v-model="podcastSearchRegion" :items="$podcastSearchRegionOptions" small class="max-w-72" menu-max-height="200px" @input="formUpdated" />
       </div>
@@ -112,6 +123,7 @@ export default {
       epubsAllowScriptedContent: false,
       hideSingleBookSeries: false,
       onlyShowLaterBooksInContinueSeries: false,
+      autoApplyFileTemplate: false,
       podcastSearchRegion: 'us',
       markAsFinishedWhen: 'timeRemaining',
       markAsFinishedValue: 10
@@ -170,6 +182,7 @@ export default {
           epubsAllowScriptedContent: !!this.epubsAllowScriptedContent,
           hideSingleBookSeries: !!this.hideSingleBookSeries,
           onlyShowLaterBooksInContinueSeries: !!this.onlyShowLaterBooksInContinueSeries,
+          autoApplyFileTemplate: !!this.autoApplyFileTemplate,
           podcastSearchRegion: this.podcastSearchRegion,
           markAsFinishedTimeRemaining: markAsFinishedTimeRemaining,
           markAsFinishedPercentComplete: markAsFinishedPercentComplete
@@ -188,6 +201,7 @@ export default {
       this.epubsAllowScriptedContent = !!this.librarySettings.epubsAllowScriptedContent
       this.hideSingleBookSeries = !!this.librarySettings.hideSingleBookSeries
       this.onlyShowLaterBooksInContinueSeries = !!this.librarySettings.onlyShowLaterBooksInContinueSeries
+      this.autoApplyFileTemplate = !!this.librarySettings.autoApplyFileTemplate
       this.podcastSearchRegion = this.librarySettings.podcastSearchRegion || 'us'
       this.markAsFinishedWhen = this.librarySettings.markAsFinishedTimeRemaining ? 'timeRemaining' : 'percentComplete'
       if (!this.librarySettings.markAsFinishedTimeRemaining && !this.librarySettings.markAsFinishedPercentComplete) {
