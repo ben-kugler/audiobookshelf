@@ -7,6 +7,10 @@
       <ui-btn small @click="$emit('readNormally')">{{ $strings.ButtonRead }}</ui-btn>
     </div>
 
+    <div v-if="loading && !error" class="absolute inset-0 flex items-center justify-center z-10">
+      <widgets-loading-spinner />
+    </div>
+
     <div id="readalong-viewer" class="w-full" :style="{ height: viewerHeight + 'px' }" />
 
     <!-- controls -->
@@ -47,7 +51,8 @@ export default {
       rate: 1,
       audioTime: 0,
       audioDuration: 0,
-      error: null
+      error: null,
+      loading: true
     }
   },
   computed: {
@@ -79,6 +84,7 @@ export default {
       await this.buildChapters()
       if (!this.chapters.length) {
         this.error = this.$strings.MessageNoReadAlongData || 'No read-along data in this ebook'
+        this.loading = false
         return
       }
       this.rendition = this.book.renderTo('readalong-viewer', {
@@ -90,6 +96,11 @@ export default {
       })
       this.injectHighlightStyle()
       await this.loadChapter(0)
+      this.loading = false
+      // Read-Along auto-plays. Browsers may block autoplay if the click gesture
+      // expired during the async load; controls stay visible so the user can press play.
+      const p = this.$refs.audio && this.$refs.audio.play()
+      if (p && p.catch) p.catch(() => {})
     },
     // Walk the EPUB manifest for items carrying a media-overlay (epub.js exposes `.overlay`).
     async buildChapters() {
@@ -216,6 +227,7 @@ export default {
     this.initEpub().catch((e) => {
       console.error('StorytellerReader init failed', e)
       this.error = this.$strings.MessageReadAlongLoadFailed || 'Failed to load read-along'
+      this.loading = false
     })
   },
   beforeDestroy() {

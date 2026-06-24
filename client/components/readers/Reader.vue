@@ -1,15 +1,15 @@
 <template>
   <div v-if="show" id="reader" :data-theme="ereaderTheme" class="group absolute top-0 left-0 w-full z-60 data-[theme=dark]:bg-primary data-[theme=dark]:text-white data-[theme=light]:bg-white data-[theme=light]:text-black data-[theme=sepia]:bg-[rgb(244,236,216)] data-[theme=sepia]:text-[#5b4636]" :class="{ 'reader-player-open': !!streamLibraryItem }">
     <div class="absolute top-4 left-4 z-20 flex items-center">
-      <button v-if="isEpub" @click="toggleToC" type="button" aria-label="Table of contents menu" class="inline-flex opacity-80 hover:opacity-100">
+      <button v-if="isEpub && !isReadAlong" @click="toggleToC" type="button" aria-label="Table of contents menu" class="inline-flex opacity-80 hover:opacity-100">
         <span class="material-symbols text-2xl">menu</span>
       </button>
-      <button v-if="hasSettings" @click="openSettings" type="button" aria-label="Ereader settings" class="mx-4 inline-flex opacity-80 hover:opacity-100">
+      <button v-if="hasSettings && !isReadAlong" @click="openSettings" type="button" aria-label="Ereader settings" class="mx-4 inline-flex opacity-80 hover:opacity-100">
         <span class="material-symbols text-1.5xl">settings</span>
       </button>
     </div>
 
-    <div class="absolute top-4 left-1/2 transform -translate-x-1/2">
+    <div v-if="!isReadAlong" class="absolute top-4 left-1/2 transform -translate-x-1/2">
       <h1 :data-type="ebookType" class="text-lg sm:text-xl md:text-2xl mb-1 data-[type=comic]:hidden" style="line-height: 1.15; font-weight: 100">
         <span style="font-weight: 600">{{ abTitle }}</span>
         <span v-if="abAuthor" class="hidden md:inline"> – </span>
@@ -216,6 +216,7 @@ export default {
       return null
     },
     ereaderMode() { return this.$store.state.ereaderMode },
+    isReadAlong() { return this.ereaderMode === 'readalong' },
     streamLibraryItem() {
       return this.$store.state.streamLibraryItem
     },
