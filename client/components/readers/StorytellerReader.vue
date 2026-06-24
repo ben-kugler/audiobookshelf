@@ -26,6 +26,11 @@
       <button :aria-label="rsvp ? 'Show text' : 'Speed read (one word)'" @click="rsvp = !rsvp">
         <span class="material-symbols text-2xl" :class="rsvp ? 'fill text-warning' : ''">bolt</span>
       </button>
+      <label v-if="rsvp" class="flex items-center gap-1 text-xs whitespace-nowrap" title="Read-ahead: how far the word leads the audio (seconds)">
+        <span class="material-symbols text-base">timer</span>
+        <input type="number" step="0.05" min="-0.5" max="1.5" v-model.number="rsvpLead" class="bg-primary text-xs rounded px-1 w-14" />
+        <span>s</span>
+      </label>
       <span class="text-xs tabular-nums">{{ timeLabel }}</span>
       <input type="range" class="flex-grow" min="0" :max="audioDuration || 0" step="0.1" :value="audioTime" @input="onScrub" />
       <select v-model.number="rate" class="bg-primary text-sm rounded px-1" @change="applyRate">
@@ -66,6 +71,7 @@ export default {
       loading: true,
       rsvp: false,
       rsvpWord: '',
+      rsvpLead: RSVP_LEAD,
       rafId: null
     }
   },
@@ -73,6 +79,9 @@ export default {
     rsvp(on) {
       if (on) this.startRsvpLoop()
       else this.stopRsvpLoop()
+    },
+    rsvpLead(val) {
+      localStorage.setItem('readalongRsvpLead', val)
     }
   },
   computed: {
@@ -228,7 +237,7 @@ export default {
       if (!audio || !ch) return
       const t = audio.currentTime
       const active = ch.pars.find((p) => t >= p.start && t < p.end)
-      if (active && active.words) this.rsvpWord = active.words[rsvpWordIndex(active.start, active.end, active.words, t, RSVP_LEAD)] || ''
+      if (active && active.words) this.rsvpWord = active.words[rsvpWordIndex(active.start, active.end, active.words, t, this.rsvpLead)] || ''
     },
     highlight(fragId) {
       const contents = this.rendition.getContents()
@@ -270,6 +279,8 @@ export default {
     }
   },
   mounted() {
+    const savedLead = localStorage.getItem('readalongRsvpLead')
+    if (savedLead !== null && !isNaN(parseFloat(savedLead))) this.rsvpLead = parseFloat(savedLead)
     this.initEpub().catch((e) => {
       console.error('StorytellerReader init failed', e)
       this.error = this.$strings.MessageReadAlongLoadFailed || 'Failed to load read-along'
