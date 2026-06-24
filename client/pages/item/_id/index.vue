@@ -242,8 +242,7 @@ export default {
       return this.ebookFile
     },
     showReadAlongButton() {
-      const ef = this.ebookFile
-      return ef && ef.ebookFormat === 'epub'
+      return !!this.readAlongFile
     },
     libraryId() {
       return this.libraryItem.libraryId
@@ -311,6 +310,9 @@ export default {
     },
     ebookFiles() {
       return this.libraryFiles.filter((lf) => lf.fileType === 'ebook')
+    },
+    readAlongFile() {
+      return this.ebookFiles.find((lf) => lf.isReadAlong) || null
     },
     ebookFile() {
       return this.media.ebookFile
@@ -510,7 +512,7 @@ export default {
       this.$store.commit('showEReader', { libraryItem: this.libraryItem, keepProgress: true })
     },
     openReadAlong() {
-      this.$store.commit('showEReader', { libraryItem: this.libraryItem, keepProgress: true, mode: 'readalong' })
+      this.$store.commit('showEReader', { libraryItem: this.libraryItem, keepProgress: true, mode: 'readalong', fileId: this.readAlongFile?.ino })
     },
     toggleFinished(confirmed = false) {
       if (!this.userIsFinished && this.progressPercent > 0 && !confirmed) {
