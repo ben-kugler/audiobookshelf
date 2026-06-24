@@ -8,6 +8,7 @@ class LibraryFile {
     this.ino = null
     this.metadata = null
     this.isSupplementary = null
+    this.isReadAlong = null
     this.addedAt = null
     this.updatedAt = null
 
@@ -20,6 +21,7 @@ class LibraryFile {
     this.ino = file.ino
     this.metadata = new FileMetadata(file.metadata)
     this.isSupplementary = file.isSupplementary === undefined ? null : file.isSupplementary
+    this.isReadAlong = file.isReadAlong === undefined ? null : file.isReadAlong
     this.addedAt = file.addedAt
     this.updatedAt = file.updatedAt
   }
@@ -29,6 +31,7 @@ class LibraryFile {
       ino: this.ino,
       metadata: this.metadata.toJSON(),
       isSupplementary: this.isSupplementary,
+      isReadAlong: this.isReadAlong,
       addedAt: this.addedAt,
       updatedAt: this.updatedAt,
       fileType: this.fileType
