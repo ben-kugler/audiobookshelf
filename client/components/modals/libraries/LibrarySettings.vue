@@ -87,7 +87,7 @@
         <div class="flex items-center">
           <ui-toggle-switch v-model="storytellerEnabled" size="sm" @input="formUpdated" />
           <ui-tooltip :text="$strings.LabelSettingsStorytellerSyncHelp">
-            <p class="pl-4 text-base">{{ $strings.LabelSettingsStorytellerSync }}</p>
+            <p class="pl-4 text-sm">{{ $strings.LabelSettingsStorytellerSync }}</p>
           </ui-tooltip>
         </div>
         <div v-if="storytellerEnabled" class="pl-12 pt-2 max-w-md space-y-2">

@@ -3,6 +3,7 @@ const Path = require('path')
 const Logger = require('../Logger')
 const StorytellerClient = require('./storytellerClient')
 const SocketAuthority = require('../SocketAuthority')
+const LibraryFile = require('../objects/files/LibraryFile')
 
 /**
  * Gather the absolute paths Storyteller needs: the ebook + all audio files.
@@ -55,6 +56,11 @@ async function generateReadAlong(libraryItem, library, task) {
   await client.downloadSynced(bookUuid, tmpPath)
   await fs.promises.rename(tmpPath, destPath)
 
+  // FIX #2: compute relPath relative to the library folder (same convention as importExecutor.js:64-68)
+  const folder = library.libraryFolders?.find((f) => f.id === libraryItem.libraryFolderId)
+  const folderPath = folder?.path || ''
+  const relPath = destPath.startsWith(folderPath) ? destPath.replace(folderPath, '') : '/' + Path.basename(destPath)
+
   const stat = await fs.promises.stat(destPath)
   const filename = Path.basename(destPath)
   const ext = '.epub'
@@ -69,7 +75,7 @@ async function generateReadAlong(libraryItem, library, task) {
       filename,
       ext,
       path: destPath,
-      relPath: Path.relative(libraryItem.path || itemDir, destPath),
+      relPath,
       size: stat.size || 0,
       mtimeMs: stat.mtimeMs || 0,
       ctimeMs: stat.ctimeMs || 0,
@@ -77,7 +83,18 @@ async function generateReadAlong(libraryItem, library, task) {
     }
   }
   libraryItem.media.changed('ebookFile', true)
+
+  // FIX #1: register the new file in libraryFiles (mirror importExecutor.js:88-91).
+  // Non-destructive: we leave the original ebook's libraryFiles entry in place because
+  // importExecutor does not remove a prior entry — it only appends. The user's original
+  // ebook remains on disk and remains listed in libraryFiles.
+  const newLF = new LibraryFile()
+  await newLF.setDataFromPath(destPath, relPath)
+  libraryItem.libraryFiles = [...libraryItem.libraryFiles, { ...newLF.toJSON(), isSupplementary: false }]
+  libraryItem.changed('libraryFiles', true)
+
   await libraryItem.media.save()
+  await libraryItem.save()
 
   SocketAuthority.libraryItemEmitter('item_updated', libraryItem)
   Logger.info(`[Storyteller] Read-along generated for "${libraryItem.media.title}" → ${destPath}`)

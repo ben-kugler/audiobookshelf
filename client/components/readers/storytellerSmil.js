@@ -1,5 +1,5 @@
 // Parses an EPUB 3 Media Overlay (SMIL) document into an ordered timeline.
-// Pure + DOM-free (uses DOMParser, available in the browser and jsdom test env).
+// Browser-native parsing via DOMParser (runs in the reader's browser/Cypress env).
 
 // SMIL clock values: "3.5s", "12", "0:00:08.250", "00:03.5" → seconds
 export function parseClock(value) {
