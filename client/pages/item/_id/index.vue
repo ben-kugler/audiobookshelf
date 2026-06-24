@@ -96,6 +96,11 @@
               {{ $strings.ButtonRead }}
             </ui-btn>
 
+            <ui-btn v-if="showReadAlongButton" color="bg-warning" :padding-x="4" small class="flex items-center h-9 mr-2" @click="openReadAlong">
+              <span class="material-symbols text-2xl -ml-2 pr-2 text-white" aria-hidden="true">graphic_eq</span>
+              {{ $strings.ButtonReadAlong }}
+            </ui-btn>
+
             <ui-tooltip v-if="showQueueBtn" :text="isQueued ? $strings.ButtonQueueRemoveItem : $strings.ButtonQueueAddItem" direction="top">
               <ui-icon-btn :icon="isQueued ? 'playlist_add_check' : 'playlist_play'" :bg-color="isQueued ? 'bg-primary' : 'bg-success/60'" class="mx-0.5" :class="isQueued ? 'text-success' : ''" @click="queueBtnClick" />
             </ui-tooltip>
@@ -235,6 +240,10 @@ export default {
     },
     showReadButton() {
       return this.ebookFile
+    },
+    showReadAlongButton() {
+      const ef = this.ebookFile
+      return ef && ef.ebookFormat === 'epub'
     },
     libraryId() {
       return this.libraryItem.libraryId
@@ -499,6 +508,9 @@ export default {
     },
     openEbook() {
       this.$store.commit('showEReader', { libraryItem: this.libraryItem, keepProgress: true })
+    },
+    openReadAlong() {
+      this.$store.commit('showEReader', { libraryItem: this.libraryItem, keepProgress: true, mode: 'readalong' })
     },
     toggleFinished(confirmed = false) {
       if (!this.userIsFinished && this.progressPercent > 0 && !confirmed) {
