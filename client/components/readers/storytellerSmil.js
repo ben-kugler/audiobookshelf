@@ -16,6 +16,16 @@ export function parseClock(value) {
   return parseFloat(v) || 0
 }
 
+// RSVP: which word of a SMIL par is "current" at time t, by spreading the par's
+// [start,end] span evenly across its words (SMIL aligns per-sentence, not per-word).
+// Clamped to [0, count-1]; returns 0 for an empty par.
+export function rsvpWordIndex(start, end, count, t) {
+  if (!count || count < 1) return 0
+  const dur = Math.max(0.001, end - start)
+  const frac = (t - start) / dur
+  return Math.min(count - 1, Math.max(0, Math.floor(frac * count)))
+}
+
 export function parseSmil(xmlString) {
   const doc = new DOMParser().parseFromString(xmlString, 'application/xml')
   const pars = Array.from(doc.getElementsByTagName('par'))

@@ -13,10 +13,18 @@
 
     <div id="readalong-viewer" class="w-full" :style="{ height: viewerHeight + 'px' }" />
 
+    <!-- RSVP: single-word view layered over the paginated text, advanced by the audio clock -->
+    <div v-if="rsvp && !error" class="absolute top-0 left-0 right-0 flex items-center justify-center bg-bg select-none" :style="{ height: viewerHeight + 'px', zIndex: 5 }">
+      <span class="text-5xl md:text-7xl font-semibold tracking-wide">{{ rsvpWord }}</span>
+    </div>
+
     <!-- controls -->
     <div v-show="!error" class="absolute bottom-0 left-0 right-0 h-12 bg-bg flex items-center px-4 gap-3 z-10 border-t border-white/10">
       <button :aria-label="playing ? 'Pause' : 'Play'" @click="togglePlay">
         <span class="material-symbols fill text-3xl">{{ playing ? 'pause' : 'play_arrow' }}</span>
+      </button>
+      <button :aria-label="rsvp ? 'Show text' : 'Speed read (one word)'" @click="rsvp = !rsvp">
+        <span class="material-symbols text-2xl" :class="rsvp ? 'fill text-warning' : ''">bolt</span>
       </button>
       <span class="text-xs tabular-nums">{{ timeLabel }}</span>
       <input type="range" class="flex-grow" min="0" :max="audioDuration || 0" step="0.1" :value="audioTime" @input="onScrub" />
@@ -31,7 +39,7 @@
 
 <script>
 import ePub from 'epubjs'
-import { parseSmil } from './storytellerSmil'
+import { parseSmil, rsvpWordIndex } from './storytellerSmil'
 
 export default {
   props: {
@@ -52,7 +60,9 @@ export default {
       audioTime: 0,
       audioDuration: 0,
       error: null,
-      loading: true
+      loading: true,
+      rsvp: false,
+      rsvpWord: ''
     }
   },
   computed: {
@@ -166,6 +176,7 @@ export default {
           if (!par.fragId) continue
           const el = c.document.getElementById(par.fragId)
           if (el) {
+            par.words = (el.textContent || '').trim().split(/\s+/).filter(Boolean)
             el.style.cursor = 'pointer'
             el.onclick = () => {
               this.$refs.audio.currentTime = par.start
@@ -183,6 +194,7 @@ export default {
       const t = audio.currentTime
       const active = ch.pars.find((p) => t >= p.start && t < p.end)
       if (active && active.fragId !== this.activeFragId) this.highlight(active.fragId)
+      if (active && active.words) this.rsvpWord = active.words[rsvpWordIndex(active.start, active.end, active.words.length, t)] || ''
     },
     highlight(fragId) {
       const contents = this.rendition.getContents()
