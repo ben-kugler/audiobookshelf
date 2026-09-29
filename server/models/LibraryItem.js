@@ -491,11 +491,7 @@ class LibraryItem extends Model {
       }
       Logger.debug(`Loaded ${newestAuthorsPayload.authors.length} of ${newestAuthorsPayload.count} authors for "Newest Authors" in ${newestAuthorsResult.elapsedSeconds}s`)
     } else if (library.isPodcast) {
-      const [newestEpisodesResult, mostRecentResult, mediaFinishedResult] = await Promise.all([
-        timed(() => libraryFilters.getNewestPodcastEpisodes(library, user, limit)),
-        timed(() => libraryFilters.getLibraryItemsMostRecentlyAdded(library, user, include, limit)),
-        timed(() => libraryFilters.getMediaFinished(library, user, include, limit))
-      ])
+      const [newestEpisodesResult, mostRecentResult, mediaFinishedResult] = await Promise.all([timed(() => libraryFilters.getNewestPodcastEpisodes(library, user, limit)), timed(() => libraryFilters.getLibraryItemsMostRecentlyAdded(library, user, include, limit)), timed(() => libraryFilters.getMediaFinished(library, user, include, limit))])
 
       const newestEpisodesPayload = newestEpisodesResult.payload
       // "Newest Episodes" shelf
@@ -852,8 +848,18 @@ class LibraryItem extends Model {
   get isPodcast() {
     return this.mediaType === 'podcast'
   }
+  /**
+   * Check if book or podcast library item has audio tracks.
+   * Requires expanded library item (media loaded).
+   *
+   * @returns {boolean}
+   */
   get hasAudioTracks() {
-    return this.media.hasAudioTracks()
+    if (!this.media) {
+      Logger.error(`[LibraryItem] hasAudioTracks: Library item "${this.id}" does not have media`)
+      return false
+    }
+    return this.media.hasAudioTracks
   }
 
   /**
@@ -901,24 +907,6 @@ class LibraryItem extends Model {
           [this.sequelize.models.series, 'bookSeries', 'createdAt', 'ASC']
         ]
       })
-    }
-  }
-
-  /**
-   * Check if book or podcast library item has audio tracks
-   * Requires expanded library item
-   *
-   * @returns {boolean}
-   */
-  hasAudioTracks() {
-    if (!this.media) {
-      Logger.error(`[LibraryItem] hasAudioTracks: Library item "${this.id}" does not have media`)
-      return false
-    }
-    if (this.isBook) {
-      return this.media.audioFiles?.length > 0
-    } else {
-      return this.media.podcastEpisodes?.length > 0
     }
   }
 
@@ -1004,6 +992,11 @@ class LibraryItem extends Model {
     }
   }
 
+  /**
+   * Minified library item JSON for list/shelf endpoints.
+   * `toOldJSONExpanded()` must be a strict superset: every key here must exist in expanded
+   * with the same value semantics. Only additive changes to expanded; never remove or rename keys.
+   */
   toOldJSONMinified() {
     if (!this.media) {
       throw new Error(`[LibraryItem] Cannot convert to old JSON without media for library item "${this.id}"`)
@@ -1032,30 +1025,18 @@ class LibraryItem extends Model {
     }
   }
 
+  /**
+   * Expanded library item JSON for item detail and socket events.
+   * Must be a strict superset of `toOldJSONMinified()` — built by spreading minified, then adding expanded-only fields.
+   */
   toOldJSONExpanded() {
     return {
-      id: this.id,
-      ino: this.ino,
-      oldLibraryItemId: this.extraData?.oldLibraryItemId || null,
-      libraryId: this.libraryId,
-      folderId: this.libraryFolderId,
-      path: this.path,
-      relPath: this.relPath,
-      isFile: this.isFile,
-      mtimeMs: this.mtime?.valueOf(),
-      ctimeMs: this.ctime?.valueOf(),
-      birthtimeMs: this.birthtime?.valueOf(),
-      addedAt: this.createdAt.valueOf(),
-      updatedAt: this.updatedAt.valueOf(),
+      ...this.toOldJSONMinified(),
       lastScan: this.lastScan?.valueOf(),
       scanVersion: this.lastScanVersion,
-      isMissing: !!this.isMissing,
-      isInvalid: !!this.isInvalid,
-      mediaType: this.mediaType,
       media: this.media.toOldJSONExpanded(this.id),
       // LibraryFile JSON includes a fileType property that may not be saved in libraryFiles column in the database
-      libraryFiles: this.getLibraryFilesJson(),
-      size: this.size
+      libraryFiles: this.getLibraryFilesJson()
     }
   }
 }

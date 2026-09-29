@@ -422,21 +422,6 @@ class Book extends Model {
       hasUpdates = true
     }
 
-    // TODO: Remove support for updating audioFiles, chapters and ebookFile here
-    const arrayOfObjectsKeys = ['audioFiles', 'chapters']
-    arrayOfObjectsKeys.forEach((key) => {
-      if (Array.isArray(payload[key]) && !payload[key].some((item) => typeof item !== 'object') && JSON.stringify(this[key]) !== JSON.stringify(payload[key])) {
-        this[key] = payload[key]
-        this.changed(key, true)
-        hasUpdates = true
-      }
-    })
-    if (payload.ebookFile && JSON.stringify(this.ebookFile) !== JSON.stringify(payload.ebookFile)) {
-      this.ebookFile = payload.ebookFile
-      this.changed('ebookFile', true)
-      hasUpdates = true
-    }
-
     if (hasUpdates) {
       Logger.debug(`[Book] "${this.title}" changed keys:`, this.changed())
       await this.save()
@@ -647,6 +632,11 @@ class Book extends Model {
     }
   }
 
+  /**
+   * Minified book JSON for list/shelf endpoints.
+   * `toOldJSONExpanded()` must be a strict superset: every key here must exist in expanded
+   * with the same value semantics. Only additive changes to expanded; never remove or rename keys.
+   */
   toOldJSONMinified() {
     if (!this.authors) {
       throw new Error(`[Book] Cannot convert to old JSON because authors are not loaded`)
@@ -669,6 +659,12 @@ class Book extends Model {
     }
   }
 
+  /**
+   * Expanded book JSON for item detail and socket events.
+   * Must be a strict superset of `toOldJSONMinified()` — built by spreading minified, then adding expanded-only fields.
+   *
+   * @param {string} libraryItemId
+   */
   toOldJSONExpanded(libraryItemId) {
     if (!libraryItemId) {
       throw new Error(`[Book] Cannot convert to old JSON because libraryItemId is not provided`)
@@ -681,16 +677,12 @@ class Book extends Model {
     }
 
     return {
-      id: this.id,
-      libraryItemId: libraryItemId,
+      ...this.toOldJSONMinified(),
+      libraryItemId,
       metadata: this.oldMetadataToJSONExpanded(),
-      coverPath: this.coverPath,
-      tags: [...(this.tags || [])],
       audioFiles: structuredClone(this.audioFiles),
       chapters: structuredClone(this.chapters),
       ebookFile: structuredClone(this.ebookFile),
-      duration: this.duration,
-      size: this.size,
       tracks: this.getTracklist(libraryItemId)
     }
   }
